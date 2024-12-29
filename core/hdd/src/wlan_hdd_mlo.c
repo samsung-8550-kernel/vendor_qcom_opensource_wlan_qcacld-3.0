@@ -162,7 +162,6 @@ QDF_STATUS hdd_wlan_unregister_mlo_interfaces(struct hdd_adapter *adapter,
 			ucfg_dp_destroy_intf(link_adapter->hdd_ctx->psoc,
 					     &link_adapter->mac_addr);
 		}
-		hdd_cleanup_conn_info(link_adapter);
 		hdd_remove_adapter(link_adapter->hdd_ctx, link_adapter);
 		hdd_mlo_close_adapter(link_adapter, rtnl_held);
 	}
@@ -181,15 +180,13 @@ void hdd_wlan_register_mlo_interfaces(struct hdd_context *hdd_ctx)
 		/* if target supports MLO create a new dev */
 		params.only_wdev_register = true;
 		params.associate_with_ml_adapter = false;
-		status = hdd_open_adapter_no_trans(hdd_ctx,
-						   QDF_STA_MODE,
-						   "null", mac_addr,
-						   &params);
+		status = hdd_open_adapter_no_trans(hdd_ctx, QDF_STA_MODE,
+						   "null", mac_addr, &params);
 		if (QDF_IS_STATUS_ERROR(status))
 			hdd_err("Failed to register link adapter:%d", status);
 	}
 
-	qdf_mem_zero(&params, sizeof(params));
+	qdf_mem_zero(&params, sizeof(struct hdd_adapter_create_param));
 	params.only_wdev_register  = true;
 	params.associate_with_ml_adapter = true;
 	mac_addr = wlan_hdd_get_intf_addr(hdd_ctx, QDF_STA_MODE);

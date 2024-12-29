@@ -367,16 +367,6 @@ struct ft_context {
 };
 
 /**
- * struct connect_chan_info - store channel info at the time of association
- * @ch_width_orig: channel width at the time of initial connection
- * @sec_2g_freq: secondary 2 GHz freq
- */
-struct connect_chan_info {
-	enum phy_ch_width ch_width_orig;
-	qdf_freq_t sec_2g_freq;
-};
-
-/**
  * struct mlme_connect_info - mlme connect information
  * @timing_meas_cap: Timing meas cap
  * @chan_info: oem channel info
@@ -395,7 +385,7 @@ struct connect_chan_info {
  * @ese_tspec_info: ese tspec info
  * @ext_cap_ie: Ext CAP IE
  * @assoc_btm_cap: BSS transition management cap used in (re)assoc req
- * @chan_info_orig: store channel info at the time of association
+ * @ch_width_orig: channel width at the time of initial connection
  */
 struct mlme_connect_info {
 	uint8_t timing_meas_cap;
@@ -421,7 +411,7 @@ struct mlme_connect_info {
 #endif
 	uint8_t ext_cap_ie[DOT11F_IE_EXTCAP_MAX_LEN + 2];
 	bool assoc_btm_cap;
-	struct connect_chan_info chan_info_orig;
+	enum phy_ch_width ch_width_orig;
 };
 
 /** struct wait_for_key_timer - wait for key timer object
@@ -578,15 +568,6 @@ struct del_bss_resp {
 QDF_STATUS mlme_init_rate_config(struct vdev_mlme_obj *vdev_mlme);
 
 /**
- * mlme_init_connect_chan_info_config() - initialize channel info for a
- * connection
- * @vdev_mlme: pointer to vdev mlme object
- *
- * Return: Success or Failure status
- */
-QDF_STATUS mlme_init_connect_chan_info_config(struct vdev_mlme_obj *vdev_mlme);
-
-/**
  * mlme_get_peer_mic_len() - get mic hdr len and mic length for peer
  * @psoc: psoc
  * @pdev_id: pdev id for the peer
@@ -661,10 +642,10 @@ uint32_t mlme_get_vdev_he_ops(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id);
  * @psoc: pointer to psoc object
  * @vdev_id: Vdev id
  *
- * Return: QDF_STATUS
+ * Return: none
  */
-QDF_STATUS mlme_connected_chan_stats_request(struct wlan_objmgr_psoc *psoc,
-					     uint8_t vdev_id);
+void mlme_connected_chan_stats_request(struct wlan_objmgr_psoc *psoc,
+				       uint8_t vdev_id);
 
 /**
  * mlme_get_ini_vdev_config() - get the vdev ini config params

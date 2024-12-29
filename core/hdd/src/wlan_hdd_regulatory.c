@@ -891,8 +891,6 @@ int hdd_reg_set_country(struct hdd_context *hdd_ctx, char *country_code)
 		qdf_mutex_release(&hdd_ctx->regulatory_status_lock);
 	}
 
-	hdd_reg_wait_for_country_change(hdd_ctx);
-
 	return qdf_status_to_os_return(status);
 }
 
@@ -940,15 +938,7 @@ int hdd_reg_set_band(struct net_device *dev, uint32_t band_bitmap)
 		return -EIO;
 	}
 
-	/*
-	 * If SET_FCC_CHANNEL 0 command is received first then 6 GHz band would
-	 * be disabled and band_capability would be set to 3 but existing 6 GHz
-	 * STA and P2P client connections won't be disconnected.
-	 * If set band comes again for 6 GHz band disabled and band_bitmap is
-	 * equal to band_capability, proceed to disable 6 GHz band completely.
-	 */
-	if (current_band == band_bitmap &&
-	    !ucfg_reg_get_keep_6ghz_sta_cli_connection(hdd_ctx->pdev)) {
+	if (current_band == band_bitmap) {
 		hdd_debug("band is the same so not updating");
 		return 0;
 	}
@@ -1829,8 +1819,8 @@ static void hdd_country_change_update_sap(struct hdd_context *hdd_ctx)
 			else
 				policy_mgr_check_sap_restart(hdd_ctx->psoc,
 							     adapter->vdev_id);
-			hdd_debug("Update tx power due to ctry change");
-			wlan_reg_update_tx_power_on_ctry_change(
+				hdd_debug("Update tx power due to ctry change");
+				wlan_reg_update_tx_power_on_ctry_change(
 							pdev,
 							adapter->vdev_id);
 			break;
@@ -1852,7 +1842,7 @@ static void __hdd_country_change_work_handle(struct hdd_context *hdd_ctx)
 	sme_generic_change_country_code(hdd_ctx->mac_handle,
 					hdd_ctx->reg.alpha2);
 
-	qdf_event_set_all(&hdd_ctx->regulatory_update_event);
+	qdf_event_set(&hdd_ctx->regulatory_update_event);
 	qdf_mutex_acquire(&hdd_ctx->regulatory_status_lock);
 	hdd_ctx->is_regulatory_update_in_progress = false;
 	qdf_mutex_release(&hdd_ctx->regulatory_status_lock);
@@ -1930,7 +1920,8 @@ static void hdd_regulatory_dyn_cbk(struct wlan_objmgr_psoc *psoc,
 	wiphy = pdev_priv->wiphy;
 	hdd_ctx = wiphy_priv(wiphy);
 
-	nb_flag = ucfg_mlme_get_coex_unsafe_chan_nb_user_prefer(hdd_ctx->psoc);
+	nb_flag = ucfg_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
+								hdd_ctx->psoc);
 	reg_flag = ucfg_mlme_get_coex_unsafe_chan_reg_disable(hdd_ctx->psoc);
 
 	if (avoid_freq_ind && nb_flag && reg_flag)

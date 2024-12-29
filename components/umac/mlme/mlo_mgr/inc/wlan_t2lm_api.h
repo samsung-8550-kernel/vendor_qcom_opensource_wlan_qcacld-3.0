@@ -26,14 +26,6 @@
 #include "parser_api.h"
 #include "lim_send_messages.h"
 
-/* T2LM IE Length =
- * Size of header (2 bytes) +
- * Length (1 bytes) + t2lm mapping control (2 bytes) +
- * mapping switch time (2 bytes) + expected duration (3 bytes) +
- * link mapping of tids (16 bytes)
- */
-#define T2LM_IE_ACTION_FRAME_MAX_LEN 26
-
 /**
  * struct t2lm_event_data - TID to Link mapping event data
  * @status: qdf status used to indicate if t2lm action frame status
@@ -119,7 +111,6 @@ QDF_STATUS t2lm_handle_tx_resp(struct wlan_objmgr_vdev *vdev,
 /**
  * t2lm_handle_tx_req - Handler for populating T2LM action frame
  * @vdev: vdev pointer
- * @peer: pointer to peer
  * @event_data: T2LM event data pointer
  * @token: Dialog token
  *
@@ -128,13 +119,11 @@ QDF_STATUS t2lm_handle_tx_resp(struct wlan_objmgr_vdev *vdev,
  * Return: qdf_status
  */
 QDF_STATUS t2lm_handle_tx_req(struct wlan_objmgr_vdev *vdev,
-		   struct wlan_objmgr_peer *peer,
-		   void *event_data, uint8_t *token);
+			      void *event_data, uint8_t *token);
 
 /**
  * t2lm_handle_rx_resp - Handler for parsing T2LM action frame
  * @vdev: vdev pointer
- * @peer: peer pointer
  * @event_data: T2LM event data pointer
  * @frame_len: Frame length
  * @token: Dialog token
@@ -144,10 +133,7 @@ QDF_STATUS t2lm_handle_tx_req(struct wlan_objmgr_vdev *vdev,
  * Return: qdf_status
  */
 QDF_STATUS t2lm_handle_rx_resp(struct wlan_objmgr_vdev *vdev,
-			       struct wlan_objmgr_peer *peer,
-			       void *event_data, uint32_t frame_len,
-			       uint8_t *token);
-
+			       void *event_data, uint32_t frame_len, uint8_t *token);
 /**
  * t2lm_handle_rx_teardown - Handler for parsing T2LM action frame
  * @vdev: vdev pointer
@@ -207,16 +193,6 @@ QDF_STATUS wlan_t2lm_deliver_event(struct wlan_objmgr_vdev *vdev,
 				   uint8_t *dialog_token);
 
 /**
- * wlan_t2lm_clear_ongoing_negotiation - Clear ongoing
- * negotiation peer level TID-to-link-mapping.
- * @peer: pointer to peer
- *
- * Return: none
- */
-void
-wlan_t2lm_clear_ongoing_negotiation(struct wlan_objmgr_peer *peer);
-
-/**
  * wlan_t2lm_clear_peer_negotiation - Clear previously
  * negotiated peer level TID-to-link-mapping.
  * @peer: pointer to peer
@@ -225,35 +201,7 @@ wlan_t2lm_clear_ongoing_negotiation(struct wlan_objmgr_peer *peer);
  */
 void
 wlan_t2lm_clear_peer_negotiation(struct wlan_objmgr_peer *peer);
-
-/**
- * wlan_t2lm_clear_all_tid_mapping - Clear all tid mapping
- * @vdev: pointer to vdev
- *
- * This api will clear peer level and beacon t2lm mapping.
- * Return: none
- */
-void
-wlan_t2lm_clear_all_tid_mapping(struct wlan_objmgr_vdev *vdev);
-
-/**
- * wlan_populate_link_disable_t2lm_frame - Populate link disable t2lm frame
- * @vdev: pointer to vdev
- * @params: link disable params
- *
- * Return: none
- */
-QDF_STATUS
-wlan_populate_link_disable_t2lm_frame(struct wlan_objmgr_vdev *vdev,
-				      struct mlo_link_disable_request_evt_params *params);
 #else
-static inline QDF_STATUS
-wlan_populate_link_disable_t2lm_frame(struct wlan_objmgr_vdev *vdev,
-				      struct mlo_link_disable_request_evt_params *params)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-
 static inline QDF_STATUS
 t2lm_handle_rx_req(struct wlan_objmgr_vdev *vdev,
 		   struct wlan_objmgr_peer *peer,
@@ -271,7 +219,6 @@ t2lm_handle_tx_resp(struct wlan_objmgr_vdev *vdev,
 
 static inline QDF_STATUS
 t2lm_handle_tx_req(struct wlan_objmgr_vdev *vdev,
-		   struct wlan_objmgr_peer *peer,
 		   void *event_data, uint8_t *token)
 {
 	return QDF_STATUS_E_NOSUPPORT;
@@ -279,7 +226,6 @@ t2lm_handle_tx_req(struct wlan_objmgr_vdev *vdev,
 
 static inline QDF_STATUS
 t2lm_handle_rx_resp(struct wlan_objmgr_vdev *vdev,
-		    struct wlan_objmgr_peer *peer,
 		    void *event_data, uint32_t frame_len, uint8_t *token)
 {
 	return QDF_STATUS_E_NOSUPPORT;
@@ -308,15 +254,7 @@ wlan_t2lm_validate_candidate(struct cnx_mgr *cm_ctx,
 }
 
 static inline void
-wlan_t2lm_clear_ongoing_negotiation(struct wlan_objmgr_peer *peer)
-{}
-
-static inline void
 wlan_t2lm_clear_peer_negotiation(struct wlan_objmgr_peer *peer)
-{}
-
-static inline void
-wlan_t2lm_clear_all_tid_mapping(struct wlan_objmgr_vdev *vdev)
 {}
 
 static inline

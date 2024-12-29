@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -669,11 +669,10 @@ QDF_STATUS dp_direct_link_init(struct wlan_dp_psoc_context *dp_ctx);
 /**
  * dp_direct_link_deinit() - De-initializes Direct Link datapath
  * @dp_ctx: DP private context
- * @is_ssr: true if SSR is in progress else false
  *
  * Return: None
  */
-void dp_direct_link_deinit(struct wlan_dp_psoc_context *dp_ctx, bool is_ssr);
+void dp_direct_link_deinit(struct wlan_dp_psoc_context *dp_ctx);
 
 /**
  * dp_config_direct_link: Set direct link config of vdev
@@ -695,7 +694,7 @@ QDF_STATUS dp_direct_link_init(struct wlan_dp_psoc_context *dp_ctx)
 }
 
 static inline
-void dp_direct_link_deinit(struct wlan_dp_psoc_context *dp_ctx, bool is_ssr)
+void dp_direct_link_deinit(struct wlan_dp_psoc_context *dp_ctx)
 {
 }
 
@@ -705,47 +704,6 @@ QDF_STATUS dp_config_direct_link(struct wlan_dp_intf *dp_intf,
 				 bool enable_low_latency)
 {
 	return QDF_STATUS_SUCCESS;
-}
-#endif
-
-#ifdef WLAN_DP_PROFILE_SUPPORT
-/**
- * wlan_dp_get_profile_info() - Get DP memory profile info
- *
- * Return: None
- */
-struct wlan_dp_memory_profile_info *wlan_dp_get_profile_info(void);
-
-/**
- * wlan_dp_select_profile_cfg() - Select DP profile configuration
- * @psoc: psoc context
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS wlan_dp_select_profile_cfg(struct wlan_objmgr_psoc *psoc);
-
-/**
- * wlan_dp_soc_cfg_sync_profile() - Sync DP soc cfg items with profile
- * @cdp_soc: cdp soc context
- *
- * Return: None
- */
-void wlan_dp_soc_cfg_sync_profile(struct cdp_soc_t *cdp_soc);
-
-/**
- * wlan_dp_pdev_cfg_sync_profile() - Sync DP pdev cfg items with profile
- * @cdp_soc: cdp soc context
- * @pdev_id: pdev id
- *
- * Return: QDF_STATUS
- */
-void wlan_dp_pdev_cfg_sync_profile(struct cdp_soc_t *cdp_soc, uint8_t pdev_id);
-#else
-
-static inline
-QDF_STATUS wlan_dp_select_profile_cfg(struct wlan_objmgr_psoc *psoc)
-{
-	return QDF_STATUS_E_NOSUPPORT;
 }
 #endif
 #endif

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1072,40 +1072,7 @@ QDF_STATUS policy_mgr_decr_active_session(struct wlan_objmgr_psoc *psoc,
 void policy_mgr_decr_session_set_pcl(struct wlan_objmgr_psoc *psoc,
 		enum QDF_OPMODE mode, uint8_t session_id);
 
-/**
- * polic_mgr_send_pcl_to_fw() - Send PCL to fw
- * @psoc: PSOC object information
- * @mode: Adapter mode
- *
- * Loop through all existing connections, stop RSO, send PCL to firmware
- * and start RSO. If Roaming is in progress on any of the interface,
- * avoid PCL updation as PCL gets updated post roaming.
- *
- * Return: None
- */
-void
-polic_mgr_send_pcl_to_fw(struct wlan_objmgr_psoc *psoc,
-			 enum QDF_OPMODE mode);
-
 #ifdef WLAN_FEATURE_11BE_MLO
-/**
- * policy_mgr_mlo_sta_set_link() - Set link mode for MLO STA
- * @psoc: psoc object
- * @reason: reason to set
- * @mode: mode to set
- * @num_mlo_vdev: number of vdevs
- * @mlo_vdev_lst: vdev list
- *
- * Interface to set link mode for MLO STA
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS
-policy_mgr_mlo_sta_set_link(struct wlan_objmgr_psoc *psoc,
-			    enum mlo_link_force_reason reason,
-			    enum mlo_link_force_mode mode,
-			    uint8_t num_mlo_vdev, uint8_t *mlo_vdev_lst);
-
 /**
  * policy_mgr_is_mlo_vdev_id() - check if vdev id is part of ML
  * @psoc: PSOC object information
@@ -1161,25 +1128,6 @@ void policy_mgr_move_vdev_from_connection_to_disabled_tbl(
 bool
 policy_mgr_ml_link_vdev_need_to_be_disabled(struct wlan_objmgr_psoc *psoc,
 					    struct wlan_objmgr_vdev *vdev);
-
-/**
- * policy_mgr_wait_for_set_link_update() - Wait for set/clear link response
- * @psoc: psoc pointer
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS policy_mgr_wait_for_set_link_update(struct wlan_objmgr_psoc *psoc);
-
-/**
- * policy_mgr_get_active_vdev_bitmap() - to get active ML STA vdev bitmap
- * @psoc: PSOC object information
- *
- * This API will fetch the active ML STA vdev bitmap.
- *
- * Return: vdev bitmap value
- */
-uint32_t
-policy_mgr_get_active_vdev_bitmap(struct wlan_objmgr_psoc *psoc);
 #else
 static inline bool
 policy_mgr_is_ml_vdev_id(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
@@ -1209,18 +1157,6 @@ static inline void
 policy_mgr_move_vdev_from_connection_to_disabled_tbl(
 						struct wlan_objmgr_psoc *psoc,
 						uint8_t vdev_id) {}
-
-static inline QDF_STATUS
-policy_mgr_wait_for_set_link_update(struct wlan_objmgr_psoc *psoc)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-
-static inline uint32_t
-policy_mgr_get_active_vdev_bitmap(struct wlan_objmgr_psoc *psoc)
-{
-	return 0;
-}
 #endif
 
 /**
@@ -3142,26 +3078,26 @@ policy_mgr_are_3_freq_on_same_mac(struct wlan_objmgr_psoc *psoc,
 
 /**
  * policy_mgr_allow_4th_new_freq() - Function to check whether 4th freq can
- * be allowed with existing 3 vifs
+ * be allowed wthout leading to 3 home freq on same mac
  * @psoc: Pointer to Psoc
- * @ch_freq: new channel frequency
- * @mode: new device mode
- * @ext_flags: extended flags for concurrency check
+ * @freq1: Frequency 1
+ * @freq2: Frequency 2
+ * @freq3: Frequency 3
+ * @new_ch_freq: freq to check with reference to freq1 freq2 and freq3
  *
- * Return:True if 4th freq can be allowed with existing 3 vifs
+ * Return:True if all 4 freq can be allowed without causing 3 home frequency
+ * on same mac
  */
 #ifdef FEATURE_FOURTH_CONNECTION
 bool
 policy_mgr_allow_4th_new_freq(struct wlan_objmgr_psoc *psoc,
-			      qdf_freq_t ch_freq,
-			      enum policy_mgr_con_mode mode,
-			      uint32_t ext_flags);
+			      qdf_freq_t freq1, qdf_freq_t freq2,
+			      qdf_freq_t freq3, qdf_freq_t new_ch_freq);
 #else
 static inline bool
 policy_mgr_allow_4th_new_freq(struct wlan_objmgr_psoc *psoc,
-			      qdf_freq_t ch_freq,
-			      enum policy_mgr_con_mode mode,
-			      uint32_t ext_flags)
+			      qdf_freq_t freq1, qdf_freq_t freq2,
+			      qdf_freq_t freq3, qdf_freq_t new_ch_freq)
 {
 	return false;
 }
@@ -3740,6 +3676,7 @@ bool policy_mgr_is_safe_channel(struct wlan_objmgr_psoc *psoc,
 /**
  * policy_mgr_is_sap_freq_allowed - Check if the channel is allowed for sap
  * @psoc: PSOC object information
+ * @opmode: Current op_mode, helps to check whether it's P2P_GO/SAP
  * @sap_freq: channel frequency to be checked
  *
  * Check the factors as below to decide whether the channel is allowed or not:
@@ -3750,6 +3687,7 @@ bool policy_mgr_is_safe_channel(struct wlan_objmgr_psoc *psoc,
  * Return: true for allowed, else false
  */
 bool policy_mgr_is_sap_freq_allowed(struct wlan_objmgr_psoc *psoc,
+				    enum QDF_OPMODE opmode,
 				    uint32_t sap_freq);
 
 /**
@@ -3942,18 +3880,18 @@ void policy_mgr_check_and_stop_opportunistic_timer(
 	struct wlan_objmgr_psoc *psoc, uint8_t id);
 
 /**
- * policy_mgr_set_weight_of_disabled_inactive_channels_to_zero() - set weight
- * of disabled and inactive channels to 0
+ * policy_mgr_set_weight_of_dfs_passive_channels_to_zero() - set weight of dfs
+ * and passive channels to 0
  * @psoc: pointer to soc
  * @pcl: preferred channel freq list
  * @len: length of preferred channel list
  * @weight_list: preferred channel weight list
  * @weight_len: length of weight list
- * This function set the weight of disabled and inactive channels to 0
+ * This function set the weight of dfs and passive channels to 0
  *
  * Return: None
  */
-void policy_mgr_set_weight_of_disabled_inactive_channels_to_zero(
+void policy_mgr_set_weight_of_dfs_passive_channels_to_zero(
 		struct wlan_objmgr_psoc *psoc, uint32_t *pcl,
 		uint32_t *len, uint8_t *weight_list, uint32_t weight_len);
 /**
@@ -4523,30 +4461,6 @@ bool policy_mgr_is_mlo_sta_disconnected(struct wlan_objmgr_psoc *psoc,
 					uint8_t vdev_id);
 
 #ifdef WLAN_FEATURE_11BE_MLO
-/*
- * policy_mgr_get_ml_sta_info_psoc() - Get number of ML STA vdev ids and
- * freq list
- * @pm_ctx: pm_ctx ctx
- * @num_ml_sta: Return number of ML STA present
- * @num_disabled_ml_sta: Return number of disabled ML STA links
- * @ml_vdev_lst: Return ML STA vdev id list
- * @ml_freq_lst: Return ML STA freq list
- * @num_non_ml: Return number of non-ML STA present
- * @non_ml_vdev_lst: Return non-ML STA vdev id list
- * @non_ml_freq_lst: Return non-ML STA freq list
- *
- * Return: void
- */
-void
-policy_mgr_get_ml_sta_info_psoc(struct wlan_objmgr_psoc *psoc,
-				uint8_t *num_ml_sta,
-				uint8_t *num_disabled_ml_sta,
-				uint8_t *ml_vdev_lst,
-				qdf_freq_t *ml_freq_lst,
-				uint8_t *num_non_ml,
-				uint8_t *non_ml_vdev_lst,
-				qdf_freq_t *non_ml_freq_lst);
-
 /**
  * policy_mgr_handle_link_removal_on_vdev() - Handle AP link removal for
  * MLO STA
@@ -4689,10 +4603,10 @@ void policy_mgr_handle_ml_sta_links_on_vdev_down(struct wlan_objmgr_psoc *psoc,
  * policy_mgr_handle_emlsr_sta_concurrency() - Handle concurrency scenarios with
  * EMLSR STA.
  * @psoc: objmgr psoc
- * @conc_con_coming_up: Indicates if any concurrent connection is coming up
- * @emlsr_sta_coming_up: Carries true when eMLSR STA is coming up.
- *			 Carries true when an unsupported concurrency is
- *			 gone, so that host can let firmware go to eMLSR mode.
+ * @vdev: pointer to vdev
+ * @ap_coming_up: Check if the new connection request is SAP/P2P GO/NAN
+ * @sta_coming_up: Check if the new connection request is STA/P2P Client
+ * @emlsr_sta_coming_up: Check if the new connection request is EMLSR STA
  *
  * The API handles concurrency scenarios with existing EMLSR connection when a
  * new connection request is received OR with an existing legacy connection when
@@ -4701,7 +4615,9 @@ void policy_mgr_handle_ml_sta_links_on_vdev_down(struct wlan_objmgr_psoc *psoc,
  * Return: none
  */
 void policy_mgr_handle_emlsr_sta_concurrency(struct wlan_objmgr_psoc *psoc,
-					     bool conc_con_coming_up,
+					     struct wlan_objmgr_vdev *vdev,
+					     bool ap_coming_up,
+					     bool sta_coming_up,
 					     bool emlsr_sta_coming_up);
 
 /**
@@ -4908,9 +4824,9 @@ bool policy_mgr_is_ll_sap_concurrency_valid(struct wlan_objmgr_psoc *psoc,
  * @discon_freq: disconnect frequency
  * @type: enum indoor_conc_update_type
  *
- * Return: True if need to compute pdev current channel list
+ * Return: None
  */
-bool
+void
 policy_mgr_update_indoor_concurrency(struct wlan_objmgr_psoc *psoc,
 				     uint8_t vdev_id,
 				     uint32_t discon_freq,
@@ -4951,15 +4867,5 @@ uint32_t policy_mgr_get_connection_count_with_ch_freq(uint32_t ch_freq);
  */
 bool policy_mgr_is_sap_allowed_on_indoor(struct wlan_objmgr_pdev *pdev,
 					 uint8_t vdev_id, qdf_freq_t ch_freq);
-
-/**
- * policy_mgr_get_nan_sap_scc_on_lte_coex_chnl() -Get if NAN + SAP SCC on
- * lte coex channel is allowed on lte coex channel or not
- * @psoc: psoc pointer
- *
- * Return: cfg value of nan sap scc is allowed or not on lte coex channel
- */
-
-bool policy_mgr_get_nan_sap_scc_on_lte_coex_chnl(struct wlan_objmgr_psoc *psoc);
 
 #endif /* __WLAN_POLICY_MGR_API_H */

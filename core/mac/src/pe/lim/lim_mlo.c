@@ -456,8 +456,8 @@ void lim_mlo_roam_peer_disconn_del(struct wlan_objmgr_vdev *vdev)
 
 	status = wlan_vdev_get_bss_peer_mac(vdev, &bssid);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		pe_debug("vdev id %d : failed to get bssid",
-			 wlan_vdev_get_id(vdev));
+		pe_err("vdev id %d : failed to get bssid",
+		       wlan_vdev_get_id(vdev));
 		return;
 	}
 
@@ -671,7 +671,6 @@ QDF_STATUS lim_mlo_proc_assoc_req_frm(struct wlan_objmgr_vdev *vdev,
 	qdf_copy_macaddr(&link_bssid, (struct qdf_mac_addr *)session->bssId);
 	status = util_gen_link_assoc_req(
 				frm_body, frame_len, sub_type == LIM_REASSOC,
-				0,
 				link_bssid,
 				qdf_nbuf_data(assoc_req->assoc_req_buf),
 				qdf_nbuf_len(assoc_req->assoc_req_buf),
@@ -1303,22 +1302,6 @@ lim_send_bcn_frame_mlo(struct mac_context *mac_ctx,
 	session->mlo_ie_total_len = 0;
 	qdf_mem_zero(&session->mlo_ie, sizeof(session->mlo_ie));
 	status = populate_dot11f_bcn_mlo_ie(mac_ctx, session);
-	if (QDF_IS_STATUS_SUCCESS(status))
-		session->mlo_ie_total_len =
-				lim_caculate_mlo_ie_length(&session->mlo_ie);
-
-	return session->mlo_ie_total_len;
-}
-
-uint16_t
-lim_send_probe_req_frame_mlo(struct mac_context *mac_ctx,
-			     struct pe_session *session)
-{
-	QDF_STATUS status;
-
-	session->mlo_ie_total_len = 0;
-	qdf_mem_zero(&session->mlo_ie, sizeof(session->mlo_ie));
-	status = populate_dot11f_probe_req_mlo_ie(mac_ctx, session);
 	if (QDF_IS_STATUS_SUCCESS(status))
 		session->mlo_ie_total_len =
 				lim_caculate_mlo_ie_length(&session->mlo_ie);

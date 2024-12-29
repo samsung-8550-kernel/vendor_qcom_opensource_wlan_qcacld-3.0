@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1608,9 +1608,6 @@ void hdd_disable_mc_addr_filtering(struct hdd_adapter *adapter,
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return;
 
-	if (!hdd_cm_is_vdev_associated(adapter))
-		return;
-
 	status = ucfg_pmo_disable_mc_addr_filtering_in_fwr(hdd_ctx->psoc,
 							   adapter->vdev_id,
 							   trigger);
@@ -1633,9 +1630,6 @@ void hdd_disable_and_flush_mc_addr_list(struct hdd_adapter *adapter,
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	QDF_STATUS status;
 
-	if (!hdd_cm_is_vdev_associated(adapter))
-		goto flush_mc_list;
-
 	/* disable mc list first because the mc list is cached in PMO */
 	status = ucfg_pmo_disable_mc_addr_filtering_in_fwr(hdd_ctx->psoc,
 							   adapter->vdev_id,
@@ -1643,12 +1637,10 @@ void hdd_disable_and_flush_mc_addr_list(struct hdd_adapter *adapter,
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_debug("failed to disable mc list; status:%d", status);
 
-flush_mc_list:
 	status = ucfg_pmo_flush_mc_addr_list(hdd_ctx->psoc,
 					     adapter->vdev_id);
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_debug("failed to flush mc list; status:%d", status);
-
 }
 
 /**
@@ -2906,28 +2898,12 @@ static int wlan_hdd_set_mlo_ps(struct wlan_objmgr_psoc *psoc,
 
 	return status;
 }
-
-static bool wlan_hdd_is_ml_adapter(struct hdd_adapter *adapter)
-{
-	struct hdd_mlo_adapter_info *mlo_adapter_info;
-	bool is_ml_adapter = false;
-
-	mlo_adapter_info = &adapter->mlo_adapter_info;
-	is_ml_adapter = mlo_adapter_info->is_ml_adapter ? 1 : 0;
-
-	return is_ml_adapter;
-}
 #else
 static int wlan_hdd_set_mlo_ps(struct wlan_objmgr_psoc *psoc,
 			       struct hdd_adapter *adapter,
 			       bool allow_power_save, int timeout)
 {
 	return 0;
-}
-
-static bool wlan_hdd_is_ml_adapter(struct hdd_adapter *adapter)
-{
-	return false;
 }
 #endif
 
@@ -2949,7 +2925,7 @@ static int __wlan_hdd_cfg80211_set_power_mgmt(struct wiphy *wiphy,
 	struct hdd_context *hdd_ctx;
 	int status;
 	struct wlan_objmgr_vdev *vdev;
-	bool is_ml_adapter;
+	bool is_mlo_vdev;
 
 	hdd_enter();
 
@@ -2988,7 +2964,7 @@ static int __wlan_hdd_cfg80211_set_power_mgmt(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	is_ml_adapter = wlan_hdd_is_ml_adapter(adapter);
+	is_mlo_vdev = wlan_vdev_mlme_is_mlo_vdev(vdev);
 
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_POWER_ID);
 
@@ -2999,7 +2975,7 @@ static int __wlan_hdd_cfg80211_set_power_mgmt(struct wiphy *wiphy,
 	flush_work(&adapter->ipv4_notifier_work);
 	hdd_adapter_flush_ipv6_notifier_work(adapter);
 
-	if (is_ml_adapter) {
+	if (is_mlo_vdev) {
 		status = wlan_hdd_set_mlo_ps(hdd_ctx->psoc, adapter,
 					     allow_power_save, timeout);
 		goto exit;

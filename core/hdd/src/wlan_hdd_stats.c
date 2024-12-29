@@ -2085,7 +2085,6 @@ static void cache_station_stats_cb(struct stats_event *ev, void *cookie)
 			continue;
 		}
 		copy_station_stats_to_adapter(adapter, ev);
-		wlan_hdd_get_peer_rx_rate_stats(adapter);
 		/* dev_put has to be done here */
 		hdd_adapter_dev_put_debug(adapter, dbgid);
 		if (next_adapter)
@@ -3954,20 +3953,19 @@ __wlan_hdd_cfg80211_connected_chan_stats_request(struct wiphy *wiphy,
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 	bool is_vdev_connected;
 	enum QDF_OPMODE mode;
-	QDF_STATUS status;
 
 	is_vdev_connected = hdd_cm_is_vdev_connected(adapter);
 	mode = adapter->device_mode;
-
-	if (mode != QDF_STA_MODE || !is_vdev_connected) {
+	if (mode == QDF_STA_MODE && is_vdev_connected) {
+		ucfg_mlme_connected_chan_stats_request(hdd_ctx->psoc,
+						adapter->vdev_id);
+	} else {
 		hdd_debug("vdev %d: reject chan stats req, mode:%d, conn:%d",
-			  adapter->vdev_id, mode, is_vdev_connected);
-		return -EPERM;
+			  adapter->vdev_id , mode, is_vdev_connected);
+		return -EINVAL;
 	}
 
-	status = ucfg_mlme_connected_chan_stats_request(hdd_ctx->psoc,
-					adapter->vdev_id);
-	return qdf_status_to_os_return(status);
+	return 0;
 }
 
 int wlan_hdd_cfg80211_connected_chan_stats_req(struct wiphy *wiphy,
@@ -5544,7 +5542,8 @@ static int wlan_hdd_get_station_remote(struct wiphy *wiphy,
 
 	for (i = 0; i < WMI_MAX_CHAINS; i++)
 		stainfo->peer_rssi_per_chain[i] =
-			    stats->peer_stats_info_ext->peer_rssi_per_chain[i];
+			    stats->peer_stats_info_ext->peer_rssi_per_chain[i] -
+			    WLAN_HDD_TGT_NOISE_FLOOR_DBM;
 
 	qdf_mem_zero(&txrx_stats, sizeof(txrx_stats));
 	txrx_stats.tx_packets = stats->peer_stats_info_ext->tx_packets;
@@ -5554,7 +5553,8 @@ static int wlan_hdd_get_station_remote(struct wiphy *wiphy,
 	txrx_stats.tx_retries = stats->peer_stats_info_ext->tx_retries;
 	txrx_stats.tx_failed = stats->peer_stats_info_ext->tx_failed;
 	txrx_stats.tx_succeed = stats->peer_stats_info_ext->tx_succeed;
-	txrx_stats.rssi = stats->peer_stats_info_ext->rssi;
+	txrx_stats.rssi = stats->peer_stats_info_ext->rssi
+			- WLAN_HDD_TGT_NOISE_FLOOR_DBM;
 	wlan_hdd_fill_rate_info(&txrx_stats, stats->peer_stats_info_ext);
 	wlan_hdd_fill_station_info(hddctx->psoc, adapter,
 				   sinfo, stainfo, &txrx_stats);
@@ -5988,7 +5988,7 @@ bool hdd_report_max_rate(struct hdd_adapter *adapter,
  * hdd_report_actual_rate() - Fill the actual rate stats.
  * @rate_flags: The rate flags computed from rate
  * @my_rate: The rate from fw stats
- * @rate: The station_info struct member struct rate_info to be filled
+ * @rate: The station_info struct member strust rate_info to be filled
  * @mcs_index: The mcs index computed from rate
  * @nss: The NSS from fw stats
  * @dcm: the dcm computed from rate
@@ -6119,59 +6119,57 @@ wlan_hdd_refill_os_rateflags(struct rate_info *os_rate, uint8_t preamble)
 
 /**
  * wlan_hdd_refill_actual_rate() - Refill actual rates info stats
- * @sinfo: kernel station_info struct to populate
- * @adapter: STA adapter to get stats for
+ * @os_rate: rate info for os
+ * @adapter: The HDD adapter structure
  *
- * This function is to replace RX rates which was previously filled by fw.
+ * When rates info reported is provided by driver, this function
+ * will take effect to replace the bandwidth calculated from fw.
  *
  * Return: None
  */
 static void
-wlan_hdd_refill_actual_rate(struct station_info *sinfo,
+wlan_hdd_refill_actual_rate(struct rate_info *os_rate,
 			    struct hdd_adapter *adapter)
 {
-	uint8_t preamble;
+	ol_txrx_soc_handle soc;
+	uint32_t rate;
+	enum txrate_gi guard_interval;
+	enum rx_tlv_bw bw;
+	uint8_t preamble, mcs_index, nss;
 
-	sinfo->rxrate.nss = adapter->hdd_stats.class_a_stat.rx_nss;
+	soc = cds_get_context(QDF_MODULE_ID_SOC);
+	rate = adapter->hdd_stats.class_a_stat.rx_rate;
+	guard_interval = adapter->hdd_stats.class_a_stat.rx_gi;
 	preamble = adapter->hdd_stats.class_a_stat.rx_preamble;
+	bw = adapter->hdd_stats.class_a_stat.rx_bw;
+	mcs_index = adapter->hdd_stats.class_a_stat.rx_mcs_index;
+	nss = adapter->hdd_stats.class_a_stat.rx_nss;
 
+	os_rate->nss = nss;
 	if (preamble == DOT11_A || preamble == DOT11_B) {
-		sinfo->rxrate.legacy = adapter->hdd_stats.class_a_stat.rx_rate;
-		hdd_debug("Reporting legacy rate %d", sinfo->rxrate.legacy);
-		return;
-	} else if (qdf_unlikely(preamble == INVALID_PREAMBLE)) {
-		/*
-		 * If preamble is invalid, it means that DP has not received
-		 * a data frame since assoc or roaming so there is no rates.
-		 * In this case, using FW rates which was set previously.
-		 */
-		hdd_debug("Driver failed to get rate, reporting FW rate");
+		os_rate->legacy = rate;
+		hdd_debug("Reporting legacy rate %d", os_rate->legacy);
 		return;
 	}
 
-	wlan_hdd_refill_os_rateflags(&sinfo->rxrate, preamble);
+	wlan_hdd_refill_os_rateflags(os_rate, preamble);
 
-	sinfo->rxrate.mcs = adapter->hdd_stats.class_a_stat.rx_mcs_index;
+	os_rate->mcs = mcs_index;
 
-	wlan_hdd_refill_os_bw(&sinfo->rxrate,
-			      adapter->hdd_stats.class_a_stat.rx_bw);
+	wlan_hdd_refill_os_bw(os_rate, bw);
 	/* Fill out gi and dcm in HE mode */
-	sinfo->rxrate.he_gi =
-		hdd_map_he_gi_to_os(adapter->hdd_stats.class_a_stat.rx_gi);
-	sinfo->rxrate.he_dcm = 0;
+	os_rate->he_gi = hdd_map_he_gi_to_os(guard_interval);
+	os_rate->he_dcm = 0;
 
-	if (adapter->hdd_stats.class_a_stat.rx_gi == TXRATE_GI_0_4_US)
-		sinfo->rxrate.flags |= RATE_INFO_FLAGS_SHORT_GI;
+	if (guard_interval == TXRATE_GI_0_4_US)
+		os_rate->flags |= RATE_INFO_FLAGS_SHORT_GI;
 
 	hdd_debug("sgi=%d, preamble=%d, bw=%d, mcs=%d, nss=%d, rate_flag=0x%x",
-		  adapter->hdd_stats.class_a_stat.rx_gi, preamble,
-		  adapter->hdd_stats.class_a_stat.rx_bw,
-		  adapter->hdd_stats.class_a_stat.rx_mcs_index,
-		  adapter->hdd_stats.class_a_stat.rx_nss, sinfo->rxrate.flags);
+		  guard_interval, preamble, bw, mcs_index, nss, os_rate->flags);
 }
 #else
 static inline void
-wlan_hdd_refill_actual_rate(struct station_info *sinfo,
+wlan_hdd_refill_actual_rate(struct rate_info *os_rate,
 			    struct hdd_adapter *adapter)
 {
 }
@@ -6399,8 +6397,10 @@ static int wlan_hdd_get_sta_stats(struct wiphy *wiphy,
 
 		if (tx_mcs_index == INVALID_MCS_IDX)
 			tx_mcs_index = 0;
-		if (rx_mcs_index == INVALID_MCS_IDX)
+		if (rx_mcs_index == INVALID_MCS_IDX) {
 			rx_mcs_index = 0;
+			adapter->hdd_stats.class_a_stat.rx_mcs_index = 0;
+		}
 	}
 
 	hdd_debug("[RSSI %d, RLMS %u, rssi high %d, rssi mid %d, rssi low %d]-"
@@ -6460,18 +6460,32 @@ static int wlan_hdd_get_sta_stats(struct wiphy *wiphy,
 					       rx_nss, rx_dcm, rx_gi);
 		}
 	} else {
+		uint8_t rx_nss_max, rx_preamble;
+
 		/* Fill TX stats */
 		hdd_report_actual_rate(tx_rate_flags, my_tx_rate,
 				       &sinfo->txrate, tx_mcs_index,
 				       tx_nss, tx_dcm, tx_gi);
 
 		/* Fill RX stats */
-		hdd_report_actual_rate(rx_rate_flags, my_rx_rate,
-				       &sinfo->rxrate, rx_mcs_index,
-				       rx_nss, rx_dcm, rx_gi);
+		rx_nss_max = wlan_vdev_mlme_get_nss(vdev);
+		rx_preamble = adapter->hdd_stats.class_a_stat.rx_preamble;
 
-		/* Using driver RX rate to replace the FW RX rate */
-		wlan_hdd_refill_actual_rate(sinfo, adapter);
+		/*
+		 * If rx_preamble has been marked invalid, it means that DP
+		 * has not received a data frame since assoc or roaming so
+		 * that the rates info has not been updated, report max rate.
+		 */
+		if (qdf_unlikely(rx_preamble == INVALID_PREAMBLE))
+			hdd_report_max_rate(adapter, mac_handle,
+					    &sinfo->rxrate,
+					    sinfo->signal,
+					    rx_rate_flags,
+					    rx_mcs_index,
+					    my_rx_rate,
+					    rx_nss_max);
+		else
+			wlan_hdd_refill_actual_rate(&sinfo->rxrate, adapter);
 	}
 
 	wlan_hdd_fill_summary_stats(&adapter->hdd_stats.summary_stat,
@@ -6580,7 +6594,6 @@ static int __wlan_hdd_cfg80211_get_station(struct wiphy *wiphy,
 
 	if (wlan_hdd_validate_vdev_id(adapter->vdev_id))
 		return -EINVAL;
-
 	if (!mac) {
 		hdd_err("Received NULL mac address");
 		return -EINVAL;
@@ -6589,8 +6602,6 @@ static int __wlan_hdd_cfg80211_get_station(struct wiphy *wiphy,
 		hdd_err("MAC is all zero");
 		return -EINVAL;
 	}
-
-	hdd_debug("Stats request on MAC: "QDF_MAC_ADDR_FMT, QDF_MAC_ADDR_REF(mac));
 
 	if (adapter->device_mode == QDF_SAP_MODE ||
 	    adapter->device_mode == QDF_P2P_GO_MODE) {
@@ -6954,7 +6965,7 @@ static int __wlan_hdd_cfg80211_dump_survey(struct wiphy *wiphy,
 	bool filled = false;
 
 	if (idx > NUM_CHANNELS - 1)
-		return -ENOENT;
+		return -EINVAL;
 
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	status = wlan_hdd_validate_context(hdd_ctx);
@@ -6982,7 +6993,7 @@ static int __wlan_hdd_cfg80211_dump_survey(struct wiphy *wiphy,
 	filled = wlan_hdd_update_survey_info(wiphy, adapter, survey, idx);
 
 	if (!filled)
-		return -ENOENT;
+		return -ENONET;
 
 	return 0;
 }
@@ -7598,36 +7609,44 @@ void wlan_hdd_get_peer_rx_rate_stats(struct hdd_adapter *adapter)
 
 	soc = cds_get_context(QDF_MODULE_ID_SOC);
 
-	peer_stats = qdf_mem_malloc(sizeof(*peer_stats));
-	if (!peer_stats) {
-		hdd_err("Failed to malloc peer_stats");
+	/*
+	 *  If througput is high, do not get rx rate
+	 *  info to avoid the performance penalty
+	 */
+	if (cdp_get_bus_lvl_high(soc))
 		return;
-	}
+
+	peer_stats = qdf_mem_malloc(sizeof(*peer_stats));
+	if (!peer_stats)
+		return;
 
 	peer_mac_addr = adapter->session.station.conn_info.bssid.bytes;
 
-	/*
-	 * If failed to get RX rates info, assign an invalid value to the
-	 * preamble, used to tell driver to report max rates. The rx_rate
-	 * and rx_mcs_index are also assigned with tx_rate and tx_mcs_index
-	 * if they are invalid after ASSOC/REASSOC/ROAMING
-	 */
 	status = cdp_host_get_peer_stats(soc,
 					 adapter->vdev_id,
 					 peer_mac_addr,
 					 peer_stats);
-	if (qdf_unlikely(QDF_IS_STATUS_ERROR(status)) ||
-	    qdf_unlikely(peer_stats->rx.last_rx_rate == 0)) {
-		hdd_debug("Driver failed to get rx rates, rx mcs=%d, status=%d",
-			  adapter->hdd_stats.class_a_stat.rx_mcs_index, status);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		qdf_mem_free(peer_stats);
 		adapter->hdd_stats.class_a_stat.rx_preamble = INVALID_PREAMBLE;
-		if (adapter->hdd_stats.class_a_stat.rx_mcs_index ==
-			INVALID_MCS_IDX) {
-			adapter->hdd_stats.class_a_stat.rx_rate =
-				adapter->hdd_stats.class_a_stat.tx_rate;
-			adapter->hdd_stats.class_a_stat.rx_mcs_index =
-				adapter->hdd_stats.class_a_stat.tx_mcs_index;
-		}
+		osif_err("cdp_host_get_peer_stats failed. error: %d", status);
+		return;
+	}
+
+	if (qdf_unlikely(peer_stats->rx.last_rx_rate == 0)) {
+		hdd_debug("No rates, mcs=%d, nss=%d, gi=%d, preamble=%d, bw=%d",
+			  peer_stats->rx.mcs_info,
+			  peer_stats->rx.nss_info,
+			  peer_stats->rx.gi_info,
+			  peer_stats->rx.preamble_info,
+			  peer_stats->rx.bw_info);
+
+		/*
+		 * Assign preamble an invalid value used to determine
+		 * whether driver fills in actual rates or max rates
+		 */
+		adapter->hdd_stats.class_a_stat.rx_preamble = INVALID_PREAMBLE;
+
 		qdf_mem_free(peer_stats);
 		return;
 	}

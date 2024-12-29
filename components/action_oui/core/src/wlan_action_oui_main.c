@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2018, 2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -178,28 +178,6 @@ static void action_oui_load_config(struct action_oui_psoc_priv *psoc_priv)
 	qdf_str_lcopy(psoc_priv->action_oui_str[ACTION_OUI_11BE_OUI_ALLOW],
 		      cfg_get(psoc, CFG_ACTION_OUI_11BE_ALLOW_LIST),
 		      ACTION_OUI_MAX_STR_LEN);
-	qdf_str_lcopy(psoc_priv->action_oui_str
-			[ACTION_OUI_DISABLE_DYNAMIC_QOS_NULL_TX_RATE],
-		      cfg_get(psoc,
-			      CFG_ACTION_OUI_DISABLE_DYNAMIC_QOS_NULL_TX_RATE),
-		      ACTION_OUI_MAX_STR_LEN);
-	qdf_str_lcopy(psoc_priv->action_oui_str
-			[ACTION_OUI_ENABLE_CTS2SELF_WITH_QOS_NULL],
-		      cfg_get(psoc,
-			      CFG_ACTION_OUI_ENABLE_CTS2SELF_WITH_QOS_NULL),
-		      ACTION_OUI_MAX_STR_LEN);
-	qdf_str_lcopy(psoc_priv->action_oui_str
-			[ACTION_OUI_SEND_SMPS_FRAME_WITH_OMN],
-		      cfg_get(psoc,
-			      CFG_ACTION_OUI_SEND_SMPS_FRAME_WITH_OMN),
-		      ACTION_OUI_MAX_STR_LEN);
-	qdf_str_lcopy(psoc_priv->action_oui_str
-			[ACTION_OUI_AUTH_ASSOC_6MBPS_2GHZ],
-		      cfg_get(psoc, CFG_ACTION_OUI_AUTH_ASSOC_6MBPS_2GHZ),
-		      ACTION_OUI_MAX_STR_LEN);
-	qdf_str_lcopy(psoc_priv->action_oui_str[ACTION_OUI_DISABLE_BFORMEE],
-		      cfg_get(psoc, CFG_ACTION_OUI_DISABLE_BFORMEE),
-			      ACTION_OUI_MAX_STR_LEN);
 }
 
 static void action_oui_parse_config(struct wlan_objmgr_psoc *psoc)

@@ -139,8 +139,7 @@ os_if_qmi_wfds_send_config_msg(struct wlan_qmi_wfds_config_req_msg *src_info)
 	status = os_if_qmi_txn_init(&qmi_wfds, &txn, wfds_gen_resp_msg_v01_ei,
 				    resp);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI txn init failed for WFDS config message %d",
-			  status);
+		osif_info("QMI transaction init failed for WFDS config message");
 		goto out;
 	}
 
@@ -149,15 +148,14 @@ os_if_qmi_wfds_send_config_msg(struct wlan_qmi_wfds_config_req_msg *src_info)
 					WFDS_CONFIG_REQ_MSG_V01_MAX_MSG_LEN,
 					wfds_config_req_msg_v01_ei, req);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI WFDS config send request failed %d", status);
+		osif_info("QMI WFDS config send request failed");
 		os_if_qmi_txn_cancel(&txn);
 		goto out;
 	}
 
 	status = os_if_qmi_txn_wait(&txn, QMI_WFDS_TIMEOUT_JF);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("Wait for QMI WFDS config response timed out %d",
-			  status);
+		osif_info("Failed to wait for QMI WFDS config response");
 		goto out;
 	}
 
@@ -223,8 +221,7 @@ os_if_qmi_wfds_send_req_mem_msg(struct wlan_qmi_wfds_mem_req_msg *src_info)
 	status = os_if_qmi_txn_init(&qmi_wfds, &txn, wfds_gen_resp_msg_v01_ei,
 				    resp);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI txn init failed for WFDS mem req message %d",
-			  status);
+		osif_info("QMI transaction init failed for WFDS config message");
 		goto out;
 	}
 
@@ -233,75 +230,14 @@ os_if_qmi_wfds_send_req_mem_msg(struct wlan_qmi_wfds_mem_req_msg *src_info)
 					WFDS_MEM_REQ_MSG_V01_MAX_MSG_LEN,
 					wfds_mem_req_msg_v01_ei, req);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI WFDS mem request send failed %d", status);
+		osif_info("QMI WFDS config send request failed");
 		os_if_qmi_txn_cancel(&txn);
 		goto out;
 	}
 
 	status = os_if_qmi_txn_wait(&txn, QMI_WFDS_TIMEOUT_JF);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("Wait for QMI WFDS mem response timed out %d",
-			  status);
-		goto out;
-	}
-
-	qdf_assert(resp->resp.result == QMI_RESULT_SUCCESS_V01);
-
-out:
-	qdf_mem_free(resp);
-	qdf_mem_free(req);
-
-	return status;
-}
-
-/*
- * os_if_qmi_wfds_send_misc_req_msg() - Send misc req message to QMI server
- * @is_ssr: true if SSR is in progress else false
- *
- * Return: QDF status
- */
-static QDF_STATUS
-os_if_qmi_wfds_send_misc_req_msg(bool is_ssr)
-{
-	struct wfds_misc_req_msg_v01 *req;
-	struct wfds_gen_resp_msg_v01 *resp;
-	struct qmi_txn txn;
-	QDF_STATUS status;
-
-	req = qdf_mem_malloc(sizeof(*req));
-	if (!req)
-		return QDF_STATUS_E_NOMEM;
-
-	resp = qdf_mem_malloc(sizeof(*resp));
-	if (!resp) {
-		qdf_mem_free(req);
-		return QDF_STATUS_E_NOMEM;
-	}
-
-	req->event = (is_ssr) ? WFDS_EVENT_WLAN_SSR_V01 :
-			WFDS_EVENT_WLAN_HOST_RMMOD_V01;
-
-	status = os_if_qmi_txn_init(&qmi_wfds, &txn, wfds_gen_resp_msg_v01_ei,
-				    resp);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI txn for WFDS misc request failed %d",
-			  status);
-		goto out;
-	}
-
-	status = os_if_qmi_send_request(&qmi_wfds, NULL, &txn,
-					QMI_WFDS_MISC_REQ_V01,
-					WFDS_MISC_REQ_MSG_V01_MAX_MSG_LEN,
-					wfds_misc_req_msg_v01_ei, req);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI WFDS misc request send failed %d", status);
-		os_if_qmi_txn_cancel(&txn);
-		goto out;
-	}
-
-	status = os_if_qmi_txn_wait(&txn, QMI_WFDS_TIMEOUT_JF);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("Failed to wait for WFDS misc response %d", status);
+		osif_info("Failed to wait for QMI WFDS config response");
 		goto out;
 	}
 
@@ -363,8 +299,7 @@ os_if_qmi_wfds_ipcc_map_n_cfg_msg(struct wlan_qmi_wfds_ipcc_map_n_cfg_req_msg *s
 	status = os_if_qmi_txn_init(&qmi_wfds, &txn, wfds_gen_resp_msg_v01_ei,
 				    resp);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI txn init failed for WFDS ipcc cfg req message %d",
-			  status);
+		osif_info("QMI transaction init failed for WFDS config message");
 		goto out;
 	}
 
@@ -373,15 +308,14 @@ os_if_qmi_wfds_ipcc_map_n_cfg_msg(struct wlan_qmi_wfds_ipcc_map_n_cfg_req_msg *s
 				    WFDS_IPCC_MAP_N_CFG_REQ_MSG_V01_MAX_MSG_LEN,
 				    wfds_ipcc_map_n_cfg_req_msg_v01_ei, req);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI WFDS IPCC cfg request send failed %d", status);
+		osif_info("QMI WFDS config send request failed");
 		os_if_qmi_txn_cancel(&txn);
 		goto out;
 	}
 
 	status = os_if_qmi_txn_wait(&txn, QMI_WFDS_TIMEOUT_JF);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("Wait for QMI WFDS IPCC response timed out %d",
-			  status);
+		osif_info("Failed to wait for QMI WFDS config response");
 		goto out;
 	}
 
@@ -512,8 +446,7 @@ os_if_qmi_wfds_send_ut_cmd_req_msg(struct os_if_qmi_wfds_ut_cmd_info *cmd_info)
 	status = os_if_qmi_txn_init(&qmi_wfds, &txn, wfds_gen_resp_msg_v01_ei,
 				    resp);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI txn for WFDS unit test cmd init failed %d",
-			  status);
+		osif_info("QMI transaction for WFDS unit test cmd init failed");
 		goto out;
 	}
 
@@ -521,17 +454,10 @@ os_if_qmi_wfds_send_ut_cmd_req_msg(struct os_if_qmi_wfds_ut_cmd_info *cmd_info)
 					QMI_WFDS_UT_CMD_REQ_V01,
 					WFDS_UT_CMD_REQ_MSG_V01_MAX_MSG_LEN,
 					wfds_ut_cmd_req_msg_v01_ei, req);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("QMI WFDS UT command request send failed %d",
-			  status);
-		os_if_qmi_txn_cancel(&txn);
-		goto out;
-	}
 
 	status = os_if_qmi_txn_wait(&txn, QMI_WFDS_TIMEOUT_JF);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		osif_info("Wait for unit test cmd response timed out %d",
-			  status);
+		osif_info("Failed to wait for unit test cmd response");
 		goto out;
 	}
 
@@ -652,6 +578,4 @@ void os_if_qmi_wfds_register_callbacks(struct wlan_qmi_psoc_callbacks *cb_obj)
 	cb_obj->qmi_wfds_send_req_mem_msg = os_if_qmi_wfds_send_req_mem_msg;
 	cb_obj->qmi_wfds_send_ipcc_map_n_cfg_msg =
 					os_if_qmi_wfds_ipcc_map_n_cfg_msg;
-	cb_obj->qmi_wfds_send_misc_req_msg =
-					os_if_qmi_wfds_send_misc_req_msg;
 }

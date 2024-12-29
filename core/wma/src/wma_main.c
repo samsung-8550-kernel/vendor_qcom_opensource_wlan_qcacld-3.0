@@ -333,12 +333,14 @@ wma_get_concurrency_support(struct wlan_objmgr_psoc *psoc)
  * Version 1 - Base feature version
  * Version 2 - WMI_HOST_VENDOR1_REQ1_VERSION_3_30 updated.
  * Version 3 - min sleep period for TWT and Scheduled PM in FW updated
+ * Version 4 -  WMI_HOST_VENDOR1_REQ1_VERSION_3_40 updated.
+ * Version 5 - INI based 11BE support updated
  *
  * Return: None
  */
 static void wma_update_set_feature_version(struct target_feature_set *fs)
 {
-	fs->feature_set_version = 4;
+	fs->feature_set_version = 5;
 }
 
 /**
@@ -1171,18 +1173,6 @@ static inline bool wma_is_tx_chainmask_valid(int value,
 
 	return false;
 }
-
-#ifdef QCA_MULTIPASS_SUPPORT
-inline bool wma_is_multipass_sap(struct target_psoc_info *tgt_hdl)
-{
-	return tgt_hdl->info.service_ext2_param.is_multipass_sap;
-}
-#else
-inline bool wma_is_multipass_sap(struct target_psoc_info *tgt_hdl)
-{
-	return false;
-}
-#endif
 
 /**
  * wma_convert_ac_value() - map ac setting to the value to be used in FW.
@@ -5134,38 +5124,6 @@ static inline void wma_get_dynamic_vdev_macaddr_support(
 }
 #endif
 
-#ifdef WLAN_FEATURE_NAN
-/**
- * wma_nan_set_pairing_feature() - set feature bit for Secure NAN if max
- * pairing session has non-zero value.
- *
- * Return: none
- */
-static void wma_nan_set_pairing_feature(void)
-{
-	tp_wma_handle wma_handle = cds_get_context(QDF_MODULE_ID_WMA);
-	struct target_psoc_info *tgt_hdl;
-	struct wlan_objmgr_psoc *psoc;
-
-	if (!wma_handle) {
-		wma_err("wma handle is null");
-		return;
-	}
-
-	psoc = wma_handle->psoc;
-	tgt_hdl = wlan_psoc_get_tgt_if_handle(psoc);
-	if (!tgt_hdl) {
-		wma_err("tgt_hdl is null");
-		return;
-	}
-
-	if (tgt_hdl->info.service_ext2_param.max_nan_pairing_sessions) {
-		wma_set_fw_wlan_feat_caps(SECURE_NAN);
-		wma_debug("Secure NAN is enabled");
-	}
-}
-#endif /* WLAN_FEATURE_NAN */
-
 /**
  * wma_update_target_services() - update target services from wma handle
  * @wmi_handle: Unified wmi handle
@@ -5258,7 +5216,6 @@ static inline void wma_update_target_services(struct wmi_unified *wmi_handle,
 #ifdef WLAN_FEATURE_NAN
 	if (wmi_service_enabled(wmi_handle, wmi_service_nan))
 		g_fw_wlan_feat_caps |= (1 << NAN);
-	wma_nan_set_pairing_feature();
 #endif /* WLAN_FEATURE_NAN */
 
 	if (wmi_service_enabled(wmi_handle, wmi_service_rtt))
@@ -7194,13 +7151,10 @@ static void wma_update_hw_mode_config(tp_wma_handle wma_handle,
 				     fw_config_bits);
 }
 
-#define MAX_GRP_KEY 16
-
 int wma_rx_service_ready_ext2_event(void *handle, uint8_t *ev, uint32_t len)
 {
 	tp_wma_handle wma_handle = (tp_wma_handle)handle;
 	struct target_psoc_info *tgt_hdl;
-	target_resource_config *wlan_res_cfg;
 	QDF_STATUS status;
 
 	wma_debug("Enter");
@@ -7213,12 +7167,6 @@ int wma_rx_service_ready_ext2_event(void *handle, uint8_t *ev, uint32_t len)
 		wma_err("target psoc info is NULL");
 		return -EINVAL;
 	}
-
-	wlan_res_cfg = target_psoc_get_wlan_res_cfg(tgt_hdl);
-
-	if (wlan_mlme_is_multipass_sap(wma_handle->psoc))
-		wlan_res_cfg->max_num_group_keys = MAX_GRP_KEY;
-
 	status = policy_mgr_update_sbs_freq(wma_handle->psoc, tgt_hdl);
 	if (QDF_IS_STATUS_ERROR(status))
 		return -EINVAL;

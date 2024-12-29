@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -28,6 +28,10 @@
 #include "wlan_fwol_ucfg_api.h"
 #include "wlan_ipa_obj_mgmt_api.h"
 #include "wlan_pmo_icmp.h"
+
+#ifdef SEC_CONFIG_PSM_SYSFS
+extern int wlan_hdd_sec_get_psm(void);
+#endif /* SEC_CONFIG_PSM_SYSFS */
 
 static struct wlan_pmo_ctx *gp_pmo_ctx;
 
@@ -258,8 +262,7 @@ static void wlan_pmo_init_cfg(struct wlan_objmgr_psoc *psoc,
 		cfg_get(psoc, CFG_ENABLE_BUS_SUSPEND_IN_SAP_MODE);
 	psoc_cfg->is_bus_suspend_enabled_in_go_mode =
 		cfg_get(psoc, CFG_ENABLE_BUS_SUSPEND_IN_GO_MODE);
-	if (wlan_ipa_config_is_enabled() &&
-	    !ipa_config_is_opt_wifi_dp_enabled()) {
+	if (wlan_ipa_config_is_enabled()) {
 		pmo_info("ipa is enabled and hence disable sap/go d3 wow");
 		psoc_cfg->is_bus_suspend_enabled_in_sap_mode = 0;
 		psoc_cfg->is_bus_suspend_enabled_in_go_mode = 0;
@@ -292,6 +295,12 @@ static void wlan_pmo_init_cfg(struct wlan_objmgr_psoc *psoc,
 	psoc_cfg->disconnect_sap_tdls_in_wow =
 			cfg_get(psoc, CFG_DISCONNECT_SAP_TDLS_IN_WOW);
 	wlan_pmo_get_icmp_offload_enable_cfg(psoc, psoc_cfg);
+#ifdef SEC_CONFIG_PSM_SYSFS
+	if (wlan_hdd_sec_get_psm()) {
+		psoc_cfg->arp_offload_enable = 0;
+		printk("[WIFI] CFG_PMO_ENABLE_HOST_ARPOFFLOAD : sec_control_psm = %d", psoc_cfg->arp_offload_enable);
+	}
+#endif /* SEC_CONFIG_PSM_SYSFS */
 }
 
 QDF_STATUS pmo_psoc_open(struct wlan_objmgr_psoc *psoc)
@@ -487,38 +496,4 @@ uint8_t pmo_core_psoc_get_txrx_handle(struct wlan_objmgr_psoc *psoc)
 	}
 
 	return txrx_pdev_id;
-}
-
-QDF_STATUS pmo_get_vdev_bridge_addr(struct wlan_objmgr_vdev *vdev,
-				    struct qdf_mac_addr *bridgeaddr)
-{
-	struct pmo_vdev_priv_obj *vdev_ctx;
-
-	if (!vdev) {
-		pmo_err("vdev is null");
-		return QDF_STATUS_E_INVAL;
-	}
-
-	vdev_ctx = pmo_vdev_get_priv(vdev);
-	qdf_mem_copy(bridgeaddr->bytes, vdev_ctx->bridgeaddr,
-		     QDF_MAC_ADDR_SIZE);
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS pmo_set_vdev_bridge_addr(struct wlan_objmgr_vdev *vdev,
-				    struct qdf_mac_addr *bridgeaddr)
-{
-	struct pmo_vdev_priv_obj *vdev_ctx;
-
-	if (!vdev) {
-		pmo_err("vdev is null");
-		return QDF_STATUS_E_INVAL;
-	}
-
-	vdev_ctx = pmo_vdev_get_priv(vdev);
-	qdf_mem_copy(vdev_ctx->bridgeaddr, bridgeaddr->bytes,
-		     QDF_MAC_ADDR_SIZE);
-
-	return QDF_STATUS_SUCCESS;
 }

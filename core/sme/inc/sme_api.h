@@ -249,7 +249,8 @@ enum {
   Function declarations and documentation
   ------------------------------------------------------------------------*/
 QDF_STATUS sme_open(mac_handle_t mac_handle);
-QDF_STATUS sme_init_chan_list(mac_handle_t mac_handle, enum country_src cc_src);
+QDF_STATUS sme_init_chan_list(mac_handle_t mac_handle, uint8_t *alpha2,
+		enum country_src cc_src);
 QDF_STATUS sme_close(mac_handle_t mac_handle);
 QDF_STATUS sme_start(mac_handle_t mac_handle);
 
@@ -1189,18 +1190,6 @@ QDF_STATUS sme_set_wlm_latency_level(mac_handle_t mac_handle,
 QDF_STATUS sme_set_idle_powersave_config(bool value);
 QDF_STATUS sme_notify_modem_power_state(mac_handle_t mac_handle,
 					uint32_t value);
-
-/**
- * sme_set_peer_ampdu() - API to set peer A-MPDU count to target
- * @mac_handle: mac handle
- * @vdev_id: vdev id
- * @peer_mac: peer mac address
- * @cfg: A-MPDU count to configure
- *
- * Return: 0 if success, otherwise error code
- */
-int sme_set_peer_ampdu(mac_handle_t mac_handle, uint8_t vdev_id,
-		       struct qdf_mac_addr *peer_mac, uint16_t cfg);
 
 /*SME API to convert convert the ini value to the ENUM used in csr and MAC*/
 ePhyChanBondState sme_get_cb_phy_state_from_cb_ini_value(uint32_t cb_ini_value);
@@ -3117,23 +3106,6 @@ int sme_update_eht_om_ctrl_supp(mac_handle_t mac_handle, uint8_t session_id,
 }
 #endif
 
-struct omi_ctrl_tx {
-	uint32_t omi_in_vht:1;
-	uint32_t omi_in_he:1;
-	uint32_t a_ctrl_id:4;
-	uint32_t rx_nss:3;
-	uint32_t ch_bw:2;
-	uint32_t ul_mu_dis:1;
-	uint32_t tx_nsts:3;
-	uint32_t er_su_dis:1;
-	uint32_t dl_mu_mimo_resound:1;
-	uint32_t ul_mu_data_dis:1;
-	uint32_t eht_rx_nss_ext:1;
-	uint32_t eht_ch_bw_ext:1;
-	uint32_t eht_tx_nss_ext:1;
-	uint32_t reserved:11;
-};
-
 #ifdef WLAN_FEATURE_11AX
 /**
  * sme_update_tgt_he_cap() - sets the HE caps to pmac
@@ -3232,6 +3204,19 @@ int sme_update_he_om_ctrl_supp(mac_handle_t mac_handle, uint8_t session_id,
 			       uint8_t cfg_val);
 
 #define A_CTRL_ID_OMI 0x1
+struct omi_ctrl_tx {
+	uint32_t omi_in_vht:1;
+	uint32_t omi_in_he:1;
+	uint32_t a_ctrl_id:4;
+	uint32_t rx_nss:3;
+	uint32_t ch_bw:2;
+	uint32_t ul_mu_dis:1;
+	uint32_t tx_nsts:3;
+	uint32_t er_su_dis:1;
+	uint32_t dl_mu_mimo_resound:1;
+	uint32_t ul_mu_data_dis:1;
+	uint32_t reserved:14;
+};
 
 int sme_send_he_om_ctrl_bw_update(mac_handle_t mac_handle, uint8_t session_id,
 				  uint8_t cfg_val);
@@ -3256,12 +3241,10 @@ int sme_config_action_tx_in_tb_ppdu(mac_handle_t mac_handle, uint8_t session_id,
  * sme_send_he_om_ctrl_update() - Send HE OM ctrl Tx cmd to FW
  * @mac_handle: Pointer to mac handle
  * @session_id: SME session id
- * @omi_data: OMI control data
  *
  * Return: 0 on success else err code
  */
-int sme_send_he_om_ctrl_update(mac_handle_t mac_handle, uint8_t session_id,
-			       struct omi_ctrl_tx *omi_data);
+int sme_send_he_om_ctrl_update(mac_handle_t mac_handle, uint8_t session_id);
 
 /**
  * sme_set_he_om_ctrl_param() - Update HE OM control params for OMI Tx
@@ -3457,8 +3440,7 @@ static inline int sme_update_he_htc_he_supp(mac_handle_t mac_handle,
 }
 
 static inline int
-sme_send_he_om_ctrl_update(mac_handle_t mac_handle, uint8_t session_id,
-			   struct omi_ctrl_tx *omi_data)
+sme_send_he_om_ctrl_update(mac_handle_t mac_handle, uint8_t session_id)
 {
 	return 0;
 }
@@ -3776,17 +3758,6 @@ void sme_activate_mlo_links(mac_handle_t mac_handle, uint8_t session_id,
 int sme_update_eht_caps(mac_handle_t mac_handle, uint8_t session_id,
 			uint8_t cfg_val, enum sme_eht_tx_bfee_cap_type cap_type,
 			enum QDF_OPMODE op_mode);
-/**
- * sme_send_vdev_pause_for_bcn_period() - Send vdev pause indication to FW
- * @mac_handle: Opaque handle to the global MAC context
- * @session_id: SME session id
- * @cfg_val: Set vdev pause duration
- *
- * Return: 0 on success otherwise error code
- */
-int sme_send_vdev_pause_for_bcn_period(mac_handle_t mac_handle,
-				       uint8_t session_id,
-				       uint8_t cfg_val);
 #else
 static inline void sme_set_eht_testbed_def(mac_handle_t mac_handle,
 					   uint8_t vdev_id)
@@ -3822,21 +3793,6 @@ int sme_update_eht_caps(mac_handle_t mac_handle, uint8_t session_id,
 			enum QDF_OPMODE op_mode)
 {
 	return 0;
-}
-
-static inline
-int sme_send_vdev_pause_for_bcn_period(mac_handle_t mac_handle,
-				       uint8_t session_id,
-				       uint8_t cfg_val)
-{
-	return 0;
-}
-
-static inline
-void sme_activate_mlo_links(mac_handle_t mac_handle, uint8_t session_id,
-			    uint8_t num_links,
-			    struct qdf_mac_addr active_link_addr[2])
-{
 }
 #endif
 

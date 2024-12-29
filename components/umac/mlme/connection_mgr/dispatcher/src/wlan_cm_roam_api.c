@@ -36,7 +36,6 @@
 #include "wlan_reg_ucfg_api.h"
 #include "wlan_connectivity_logging.h"
 #include "target_if.h"
-#include "wlan_mlo_mgr_roam.h"
 
 /* Support for "Fast roaming" (i.e., ESE, LFR, or 802.11r.) */
 #define BG_SCAN_OCCUPIED_CHANNEL_LIST_LEN 15
@@ -128,41 +127,29 @@ wlan_roam_update_cfg(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
 
 #endif
 
-void
-cm_update_associated_ch_info(struct wlan_objmgr_vdev *vdev, bool is_update)
+void cm_update_associated_ch_width(struct wlan_objmgr_vdev *vdev,
+				   bool is_update)
 {
 	struct mlme_legacy_priv *mlme_priv;
 	struct wlan_channel *des_chan;
-	struct connect_chan_info *chan_info_orig;
 
 	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
 	if (!mlme_priv)
 		return;
 
-	chan_info_orig = &mlme_priv->connect_info.chan_info_orig;
 	if (!is_update) {
-		chan_info_orig->ch_width_orig = CH_WIDTH_INVALID;
-		return;
+		mlme_priv->connect_info.ch_width_orig = CH_WIDTH_INVALID;
+		goto print;
 	}
 
 	des_chan = wlan_vdev_mlme_get_des_chan(vdev);
 	if (!des_chan)
 		return;
-	chan_info_orig->ch_width_orig = des_chan->ch_width;
+	mlme_priv->connect_info.ch_width_orig = des_chan->ch_width;
 
-	if (WLAN_REG_IS_24GHZ_CH_FREQ(des_chan->ch_freq) &&
-	    des_chan->ch_width == CH_WIDTH_40MHZ) {
-		if (des_chan->ch_cfreq1 == des_chan->ch_freq + BW_10_MHZ)
-			chan_info_orig->sec_2g_freq =
-					des_chan->ch_freq + BW_20_MHZ;
-		if (des_chan->ch_cfreq1 == des_chan->ch_freq - BW_10_MHZ)
-			chan_info_orig->sec_2g_freq =
-					des_chan->ch_freq - BW_20_MHZ;
-	}
-
-	mlme_debug("ch width :%d, ch_freq:%d, ch_cfreq1:%d, sec_2g_freq:%d",
-		   chan_info_orig->ch_width_orig, des_chan->ch_freq,
-		   des_chan->ch_cfreq1, chan_info_orig->sec_2g_freq);
+print:
+	mlme_debug("update associated ch width :%d, is_update:%d",
+		   mlme_priv->connect_info.ch_width_orig, is_update);
 }
 
 char *cm_roam_get_requestor_string(enum wlan_cm_rso_control_requestor requestor)
@@ -1684,6 +1671,9 @@ wlan_cm_roam_invoke(struct wlan_objmgr_pdev *pdev, uint8_t vdev_id,
 		return QDF_STATUS_E_NULL_VALUE;
 	}
 
+	mlme_debug("vdev: %d source: %d freq: %d bssid: " QDF_MAC_ADDR_FMT,
+		   vdev_id, source, chan_freq, QDF_MAC_ADDR_REF(bssid->bytes));
+
 	status = cm_start_roam_invoke(psoc, vdev, bssid, chan_freq, source);
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_NB_ID);
 
@@ -2130,37 +2120,30 @@ QDF_STATUS wlan_cm_update_fils_ft(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
-void wlan_cm_get_associated_ch_info(struct wlan_objmgr_psoc *psoc,
-				    uint8_t vdev_id,
-				    struct connect_chan_info *chan_info)
+enum phy_ch_width
+wlan_cm_get_associated_ch_width(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
 {
 	struct wlan_objmgr_vdev *vdev;
 	struct mlme_legacy_priv *mlme_priv;
-
-	chan_info->ch_width_orig = CH_WIDTH_INVALID;
-	chan_info->sec_2g_freq = 0;
+	enum phy_ch_width ch_width = CH_WIDTH_INVALID;
 
 	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id,
 						    WLAN_MLME_NB_ID);
 
 	if (!vdev) {
 		mlme_err("vdev%d: vdev object is NULL", vdev_id);
-		return;
+		goto release;
 	}
 
 	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
 	if (!mlme_priv)
 		goto release;
 
-	chan_info->ch_width_orig =
-			mlme_priv->connect_info.chan_info_orig.ch_width_orig;
-	chan_info->sec_2g_freq =
-			mlme_priv->connect_info.chan_info_orig.sec_2g_freq;
-
-	mlme_debug("vdev %d: associated_ch_width:%d, sec_2g_freq:%d", vdev_id,
-		   chan_info->ch_width_orig, chan_info->sec_2g_freq);
+	ch_width = mlme_priv->connect_info.ch_width_orig;
+	mlme_debug("vdev %d: associated_ch_width:%d", vdev_id, ch_width);
 release:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_NB_ID);
+	return ch_width;
 }
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
@@ -3653,8 +3636,9 @@ bool wlan_cm_is_roam_sync_in_progress(struct wlan_objmgr_psoc *psoc,
 }
 
 void
-wlan_cm_set_roam_offload_bssid(struct wlan_objmgr_vdev *vdev,
-			       struct qdf_mac_addr *bssid)
+wlan_cm_get_set_roam_offload_bssid(struct wlan_objmgr_vdev *vdev,
+				   struct qdf_mac_addr *bssid,
+				   bool set)
 {
 	struct mlme_legacy_priv *mlme_priv;
 	struct qdf_mac_addr *mlme_bssid;
@@ -3667,31 +3651,20 @@ wlan_cm_set_roam_offload_bssid(struct wlan_objmgr_vdev *vdev,
 
 	mlme_bssid = &(mlme_priv->cm_roam.sae_offload.bssid);
 
-	if (!bssid || qdf_is_macaddr_zero(bssid)) {
-		mlme_err("NULL BSSID");
-		return;
+	if (set) {
+		if (!bssid || qdf_is_macaddr_zero(bssid)) {
+			mlme_err("NULL BSSID");
+			return;
+		}
+		qdf_mem_copy(mlme_bssid->bytes, bssid->bytes,
+			     QDF_MAC_ADDR_SIZE);
+	} else {
+		/* Get the BSSID present in sae_offload_param */
+		if (!bssid)
+			return;
+		qdf_mem_copy(bssid->bytes, mlme_bssid->bytes,
+			     QDF_MAC_ADDR_SIZE);
 	}
-	qdf_mem_copy(mlme_bssid->bytes, bssid->bytes, QDF_MAC_ADDR_SIZE);
-}
-
-void
-wlan_cm_get_roam_offload_bssid(struct wlan_objmgr_vdev *vdev,
-			       struct qdf_mac_addr *bssid)
-{
-	struct mlme_legacy_priv *mlme_priv;
-	struct qdf_mac_addr *mlme_bssid;
-
-	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
-	if (!mlme_priv) {
-		mlme_err("vdev legacy private object is NULL");
-		return;
-	}
-
-	mlme_bssid = &(mlme_priv->cm_roam.sae_offload.bssid);
-
-	if (!bssid)
-		return;
-	qdf_mem_copy(bssid->bytes, mlme_bssid->bytes, QDF_MAC_ADDR_SIZE);
 }
 
 void
@@ -4036,9 +4009,8 @@ bool wlan_cm_is_self_mld_roam_supported(struct wlan_objmgr_psoc *psoc)
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
 QDF_STATUS
-wlan_cm_update_offload_ssid_from_candidate(struct wlan_objmgr_pdev *pdev,
-					   uint8_t vdev_id,
-					   struct qdf_mac_addr *ap_bssid)
+wlan_cm_set_offload_ssid(struct wlan_objmgr_pdev *pdev, uint8_t vdev_id,
+			 struct qdf_mac_addr *ap_bssid)
 {
 	struct wlan_objmgr_vdev *vdev;
 	struct wlan_objmgr_psoc *psoc;
@@ -4069,7 +4041,7 @@ wlan_cm_update_offload_ssid_from_candidate(struct wlan_objmgr_pdev *pdev,
 	 * get the scan entry from scan table to save the proper
 	 * ssid, bssid.
 	 */
-	wlan_cm_get_roam_offload_bssid(vdev, &cache_bssid);
+	wlan_cm_get_set_roam_offload_bssid(vdev, &cache_bssid, false);
 	if (!qdf_mem_cmp(cache_bssid.bytes, ap_bssid->bytes, QDF_MAC_ADDR_SIZE))
 		goto end;
 
@@ -4089,6 +4061,7 @@ wlan_cm_update_offload_ssid_from_candidate(struct wlan_objmgr_pdev *pdev,
 	qdf_mem_free(scan_filter);
 
 	if (!list || !qdf_list_size(list)) {
+		QDF_ASSERT(0);
 		mlme_err("Scan result is empty, candidate entry not found");
 		status = QDF_STATUS_E_FAILURE;
 		goto end;
@@ -4100,7 +4073,7 @@ wlan_cm_update_offload_ssid_from_candidate(struct wlan_objmgr_pdev *pdev,
 		wlan_cm_set_roam_offload_ssid(vdev,
 					      &entry->ssid.ssid[0],
 					      entry->ssid.length);
-		wlan_cm_set_roam_offload_bssid(vdev, ap_bssid);
+		wlan_cm_get_set_roam_offload_bssid(vdev, ap_bssid, true);
 	}
 
 end:
@@ -4110,270 +4083,4 @@ end:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_OBJMGR_ID);
 	return status;
 }
-
-QDF_STATUS
-wlan_cm_add_frame_to_scan_db(struct wlan_objmgr_psoc *psoc,
-			     struct roam_scan_candidate_frame *frame)
-{
-	struct wlan_objmgr_vdev *vdev;
-	struct wlan_objmgr_pdev *pdev;
-	struct cnx_mgr *cm_ctx;
-	uint32_t ie_offset, ie_len;
-	uint8_t *ie_ptr = NULL;
-	uint8_t *extracted_ie = NULL;
-	uint8_t primary_channel, band;
-	qdf_freq_t op_freq;
-	struct wlan_frame_hdr *wh;
-	struct qdf_mac_addr bssid;
-
-	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, frame->vdev_id,
-						    WLAN_MLME_CM_ID);
-	if (!vdev) {
-		mlme_err("vdev object is NULL");
-		return QDF_STATUS_E_NULL_VALUE;
-	}
-
-	pdev = wlan_vdev_get_pdev(vdev);
-	if (!pdev) {
-		mlme_err("pdev object is NULL");
-		goto err;
-	}
-
-	cm_ctx = cm_get_cm_ctx(vdev);
-	if (!cm_ctx) {
-		mlme_err("cm ctx is NULL");
-		goto err;
-	}
-
-	/* Fixed parameters offset */
-	ie_offset = sizeof(struct wlan_frame_hdr) + MAC_B_PR_SSID_OFFSET;
-
-	if (frame->frame_length <= ie_offset) {
-		mlme_err("Invalid frame length");
-		goto err;
-	}
-
-	ie_ptr = frame->frame + ie_offset;
-	ie_len = frame->frame_length - ie_offset;
-
-	extracted_ie = (uint8_t *)wlan_get_ie_ptr_from_eid(WLAN_ELEMID_SSID,
-							   ie_ptr, ie_len);
-	if (extracted_ie && extracted_ie[0] == WLAN_ELEMID_SSID) {
-		wh = (struct wlan_frame_hdr *)frame->frame;
-		WLAN_ADDR_COPY(&bssid.bytes[0], wh->i_addr2);
-
-		mlme_debug("SSID of the candidate is " QDF_SSID_FMT,
-			   QDF_SSID_REF(extracted_ie[1], &extracted_ie[2]));
-		wlan_cm_set_roam_offload_ssid(vdev, &extracted_ie[2],
-					      extracted_ie[1]);
-		wlan_cm_set_roam_offload_bssid(vdev, &bssid);
-	}
-
-	/* For 2.4GHz,5GHz get channel from DS IE */
-	extracted_ie = (uint8_t *)wlan_get_ie_ptr_from_eid(WLAN_ELEMID_DSPARMS,
-							   ie_ptr, ie_len);
-	if (extracted_ie && extracted_ie[0] == WLAN_ELEMID_DSPARMS &&
-	    extracted_ie[1] == WLAN_DS_PARAM_IE_MAX_LEN) {
-		band = BIT(REG_BAND_2G) | BIT(REG_BAND_5G);
-		primary_channel = *(extracted_ie + 2);
-		mlme_debug("Extracted primary channel from DS : %d",
-			   primary_channel);
-		goto update_beacon;
-	}
-
-	/* For HT, VHT and non-6GHz HE, get channel from HTINFO IE */
-	extracted_ie = (uint8_t *)
-			wlan_get_ie_ptr_from_eid(WLAN_ELEMID_HTINFO_ANA,
-						 ie_ptr, ie_len);
-	if (extracted_ie && extracted_ie[0] == WLAN_ELEMID_HTINFO_ANA &&
-	    extracted_ie[1] == sizeof(struct wlan_ie_htinfo_cmn)) {
-		band = BIT(REG_BAND_2G) | BIT(REG_BAND_5G);
-		primary_channel =
-			((struct wlan_ie_htinfo *)extracted_ie)->
-						hi_ie.hi_ctrlchannel;
-		mlme_debug("Extracted primary channel from HT INFO : %d",
-			   primary_channel);
-		goto update_beacon;
-	}
-	/* For 6GHz, get channel from HE OP IE */
-	extracted_ie = (uint8_t *)
-			wlan_get_ext_ie_ptr_from_ext_id(WLAN_HEOP_OUI_TYPE,
-							(uint8_t)
-							WLAN_HEOP_OUI_SIZE,
-							ie_ptr, ie_len);
-	if (extracted_ie && !qdf_mem_cmp(&extracted_ie[2], WLAN_HEOP_OUI_TYPE,
-					 WLAN_HEOP_OUI_SIZE) &&
-	    extracted_ie[1] <= WLAN_MAX_HEOP_IE_LEN) {
-		band = BIT(REG_BAND_6G);
-		primary_channel = util_scan_get_6g_oper_channel(extracted_ie);
-		mlme_debug("Extracted primary channel from HE OP : %d",
-			   primary_channel);
-		if (primary_channel)
-			goto update_beacon;
-	}
-
-	mlme_err("Ignore beacon, Primary channel was not found in the candidate frame");
-	goto err;
-
-update_beacon:
-	op_freq = wlan_reg_chan_band_to_freq(pdev, primary_channel, band);
-	cm_inform_bcn_probe(cm_ctx, frame->frame, frame->frame_length,
-			    op_freq,
-			    frame->rssi,
-			    cm_ctx->active_cm_id);
-
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_CM_ID);
-	return QDF_STATUS_SUCCESS;
-err:
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_CM_ID);
-	return QDF_STATUS_E_FAILURE;
-}
 #endif
-
-#ifdef WLAN_FEATURE_11BE_MLO
-bool wlan_cm_is_sae_auth_addr_conversion_required(struct wlan_objmgr_vdev *vdev)
-{
-	if (!wlan_vdev_get_mlo_external_sae_auth_conversion(vdev))
-		return false;
-
-	if (wlan_cm_is_vdev_roaming(vdev)) {
-		if (!wlan_cm_roam_is_mlo_ap(vdev))
-			return false;
-	} else if (!wlan_vdev_mlme_is_mlo_vdev(vdev)) {
-		return false;
-	}
-
-	return true;
-}
-#endif /* WLAN_FEATURE_11BE_MLO */
-
-#if defined(WLAN_FEATURE_ROAM_OFFLOAD) && defined(WLAN_FEATURE_11BE_MLO)
-/**
- * wlan_cm_reset_mlo_roam_peer_address() - this API reset the sae_roam_auth
- * structure values to zero.
- * @rso_config: pointer to struct rso_config
- *
- * Return: void
- */
-static void wlan_cm_reset_mlo_roam_peer_address(struct rso_config *rso_config)
-{
-	qdf_mem_zero(&rso_config->sae_roam_auth.peer_mldaddr,
-		     QDF_MAC_ADDR_SIZE);
-	qdf_mem_zero(&rso_config->sae_roam_auth.peer_linkaddr,
-		     QDF_MAC_ADDR_SIZE);
-}
-
-void wlan_cm_store_mlo_roam_peer_address(struct wlan_objmgr_pdev *pdev,
-					 struct auth_offload_event *auth_event)
-{
-	struct wlan_objmgr_vdev *vdev;
-	struct rso_config *rso_config;
-	struct qdf_mac_addr mld_addr;
-	QDF_STATUS status;
-
-	if (!pdev) {
-		mlme_err("pdev is NULL");
-		return;
-	}
-
-	vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, auth_event->vdev_id,
-						    WLAN_LEGACY_MAC_ID);
-	if (!vdev) {
-		mlme_err("vdev %d not found", auth_event->vdev_id);
-		return;
-	}
-
-	if (!wlan_vdev_get_mlo_external_sae_auth_conversion(vdev))
-		goto rel_ref;
-
-	if (!wlan_cm_is_vdev_roaming(vdev))
-		goto rel_ref;
-
-	rso_config = wlan_cm_get_rso_config(vdev);
-	if (!rso_config)
-		goto rel_ref;
-
-	if (qdf_is_macaddr_zero(&auth_event->ta)) {
-		/* ta have zero value for non-ML AP */
-		rso_config->sae_roam_auth.is_mlo_ap = false;
-		wlan_cm_reset_mlo_roam_peer_address(rso_config);
-		goto rel_ref;
-	}
-
-	status = scm_get_mld_addr_by_link_addr(pdev, &auth_event->ap_bssid,
-					       &mld_addr);
-
-	rso_config->sae_roam_auth.is_mlo_ap = true;
-
-	if (QDF_IS_STATUS_ERROR(status)) {
-		wlan_cm_reset_mlo_roam_peer_address(rso_config);
-		goto rel_ref;
-	}
-
-	qdf_mem_copy(rso_config->sae_roam_auth.peer_mldaddr.bytes,
-		     mld_addr.bytes, QDF_MAC_ADDR_SIZE);
-	qdf_mem_copy(rso_config->sae_roam_auth.peer_linkaddr.bytes,
-		     &auth_event->ap_bssid, QDF_MAC_ADDR_SIZE);
-
-	mlme_debug("mld addr " QDF_MAC_ADDR_FMT "link addr " QDF_MAC_ADDR_FMT,
-		   QDF_MAC_ADDR_REF(rso_config->sae_roam_auth.peer_mldaddr.bytes),
-		   QDF_MAC_ADDR_REF(rso_config->sae_roam_auth.peer_linkaddr.bytes));
-rel_ref:
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
-}
-
-struct qdf_mac_addr *
-wlan_cm_roaming_get_peer_mld_addr(struct wlan_objmgr_vdev *vdev)
-{
-	struct rso_config *rso_config;
-
-	rso_config = wlan_cm_get_rso_config(vdev);
-	if (!rso_config)
-		return NULL;
-
-	if (qdf_is_macaddr_zero(&rso_config->sae_roam_auth.peer_mldaddr))
-		return NULL;
-
-	return &rso_config->sae_roam_auth.peer_mldaddr;
-}
-
-struct qdf_mac_addr *
-wlan_cm_roaming_get_peer_link_addr(struct wlan_objmgr_vdev *vdev)
-{
-	struct rso_config *rso_config;
-
-	rso_config = wlan_cm_get_rso_config(vdev);
-	if (!rso_config)
-		return NULL;
-
-	if (qdf_is_macaddr_zero(&rso_config->sae_roam_auth.peer_linkaddr))
-		return NULL;
-
-	return &rso_config->sae_roam_auth.peer_linkaddr;
-}
-
-bool wlan_cm_roam_is_mlo_ap(struct wlan_objmgr_vdev *vdev)
-{
-	struct rso_config *rso_config;
-
-	rso_config = wlan_cm_get_rso_config(vdev);
-	if (!rso_config)
-		return false;
-
-	return rso_config->sae_roam_auth.is_mlo_ap;
-}
-
-QDF_STATUS
-cm_roam_candidate_event_handler(struct wlan_objmgr_psoc *psoc,
-				struct roam_scan_candidate_frame *candidate)
-{
-	return mlo_add_all_link_probe_rsp_to_scan_db(psoc, candidate);
-}
-#elif defined(WLAN_FEATURE_ROAM_OFFLOAD) /* end WLAN_FEATURE_11BE_MLO */
-QDF_STATUS
-cm_roam_candidate_event_handler(struct wlan_objmgr_psoc *psoc,
-				struct roam_scan_candidate_frame *candidate)
-{
-	return wlan_cm_add_frame_to_scan_db(psoc, candidate);
-}
-#endif /* WLAN_FEATURE_ROAM_OFFLOAD */

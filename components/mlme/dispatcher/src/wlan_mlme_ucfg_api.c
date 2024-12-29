@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -367,10 +367,10 @@ ucfg_mlme_set_vdev_traffic_type(struct wlan_objmgr_psoc *psoc,
 	return status;
 }
 
-QDF_STATUS ucfg_mlme_connected_chan_stats_request(struct wlan_objmgr_psoc *psoc,
-						  uint8_t vdev_id)
+void ucfg_mlme_connected_chan_stats_request(struct wlan_objmgr_psoc *psoc,
+					    uint8_t vdev_id)
 {
-	return mlme_connected_chan_stats_request(psoc, vdev_id);
+	mlme_connected_chan_stats_request(psoc, vdev_id);
 }
 
 bool
@@ -378,6 +378,19 @@ ucfg_mlme_is_chwidth_with_notify_supported(struct wlan_objmgr_psoc *psoc)
 {
 	return wlan_psoc_nif_fw_ext2_cap_get(psoc,
 				WLAN_VDEV_PARAM_CHWIDTH_WITH_NOTIFY_SUPPORT);
+}
+
+QDF_STATUS ucfg_mlme_update_bss_rate_flags(struct wlan_objmgr_psoc *psoc,
+					   uint8_t vdev_id,
+					   enum phy_ch_width ch_width,
+					   uint8_t eht_present,
+					   uint8_t he_present,
+					   uint8_t vht_present,
+					   uint8_t ht_present)
+{
+	return wlan_mlme_update_bss_rate_flags(psoc, vdev_id, ch_width,
+					       eht_present, he_present,
+					       vht_present, ht_present);
 }
 
 QDF_STATUS
@@ -1702,7 +1715,7 @@ ucfg_mlme_set_obss_detection_offload_enabled(struct wlan_objmgr_psoc *psoc,
 
 QDF_STATUS
 ucfg_mlme_set_bss_color_collision_det_sta(struct wlan_objmgr_psoc *psoc,
-					  bool value)
+					  uint8_t value)
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
 
@@ -1711,36 +1724,6 @@ ucfg_mlme_set_bss_color_collision_det_sta(struct wlan_objmgr_psoc *psoc,
 		return QDF_STATUS_E_INVAL;
 
 	mlme_obj->cfg.obss_ht40.bss_color_collision_det_sta = value;
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS
-ucfg_mlme_set_bss_color_collision_det_support(struct wlan_objmgr_psoc *psoc,
-					      bool val)
-{
-	struct wlan_mlme_psoc_ext_obj *mlme_obj;
-
-	mlme_obj = mlme_get_psoc_ext_obj(psoc);
-	if (!mlme_obj)
-		return QDF_STATUS_E_INVAL;
-
-	mlme_obj->cfg.obss_ht40.bss_color_collision_det_tgt_support = val;
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS
-ucfg_mlme_get_bss_color_collision_det_support(struct wlan_objmgr_psoc *psoc,
-					      bool *val)
-{
-	struct wlan_mlme_psoc_ext_obj *mlme_obj;
-
-	mlme_obj = mlme_get_psoc_ext_obj(psoc);
-	if (!mlme_obj)
-		return QDF_STATUS_E_INVAL;
-
-	*val = mlme_obj->cfg.obss_ht40.bss_color_collision_det_tgt_support;
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -1885,7 +1868,13 @@ bool ucfg_mlme_validate_scan_period(struct wlan_objmgr_psoc *psoc,
 bool ucfg_mlme_get_coex_unsafe_chan_nb_user_prefer(
 		struct wlan_objmgr_psoc *psoc)
 {
-	return wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(psoc);
+	return wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(psoc);
+}
+
+bool ucfg_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
+		struct wlan_objmgr_psoc *psoc)
+{
+	return wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(psoc);
 }
 
 bool ucfg_mlme_get_coex_unsafe_chan_reg_disable(

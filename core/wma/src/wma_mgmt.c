@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1341,33 +1341,6 @@ static void wma_objmgr_set_peer_mlme_type(tp_wma_handle wma,
 }
 
 #ifdef WLAN_FEATURE_11BE_MLO
-
-#define MIN_TIMEOUT_VAL 0
-#define MAX_TIMEOUT_VAL 11
-
-#define TIMEOUT_TO_US 6
-
-/*
- * wma_convert_trans_timeout_us() - API to convert
- * emlsr transition timeout to microseconds. Refer Table 9-401h
- * of IEEE802.11be specification
- * @timeout: EMLSR transition timeout
- *
- * Return: Timeout value in microseconds
- */
-static inline uint32_t
-wma_convert_trans_timeout_us(uint16_t timeout)
-{
-	uint32_t us = 0;
-
-	if (timeout > MIN_TIMEOUT_VAL && timeout < MAX_TIMEOUT_VAL) {
-		/* timeout = 1 is for 128us*/
-		us = (1 << (timeout + TIMEOUT_TO_US));
-	}
-
-	return us;
-}
-
 /**
  * wma_set_mlo_capability() - set MLO caps to the peer assoc request
  * @wma: wma handle
@@ -1410,15 +1383,17 @@ static void wma_set_mlo_capability(tp_wma_handle wma,
 		req->mlo_params.ieee_link_id = params->link_id;
 		if (req->mlo_params.emlsr_support) {
 			req->mlo_params.trans_timeout_us =
-			wma_convert_trans_timeout_us(params->emlsr_trans_timeout);
+					params->emlsr_trans_timeout;
 		}
 		req->mlo_params.msd_cap_support = params->msd_caps_present;
-		req->mlo_params.medium_sync_duration =
+		if (req->mlo_params.msd_cap_support) {
+			req->mlo_params.medium_sync_duration =
 				params->msd_caps.med_sync_duration;
-		req->mlo_params.medium_sync_ofdm_ed_thresh =
+			req->mlo_params.medium_sync_ofdm_ed_thresh =
 				params->msd_caps.med_sync_ofdm_ed_thresh;
-		req->mlo_params.medium_sync_max_txop_num =
+			req->mlo_params.medium_sync_max_txop_num =
 				params->msd_caps.med_sync_max_txop_num;
+		}
 	} else {
 		wma_debug("Peer MLO context is NULL");
 		req->mlo_params.mlo_enabled = false;
@@ -1611,6 +1586,7 @@ QDF_STATUS wma_send_peer_assoc(tp_wma_handle wma,
 	}
 
 	if (params->ch_width) {
+		cmd->bw_40 = 1;
 		cmd->peer_rate_caps |= WMI_RC_CW40_FLAG;
 		if (params->fShortGI40Mhz)
 			cmd->peer_rate_caps |= WMI_RC_SGI_FLAG;
@@ -1618,23 +1594,14 @@ QDF_STATUS wma_send_peer_assoc(tp_wma_handle wma,
 		cmd->peer_rate_caps |= WMI_RC_SGI_FLAG;
 	}
 
-	switch (params->ch_width) {
-	case CH_WIDTH_320MHZ:
-		wma_set_peer_assoc_params_bw_320(cmd, params->ch_width);
-		fallthrough;
-	case CH_WIDTH_80P80MHZ:
-	case CH_WIDTH_160MHZ:
-		cmd->bw_160 = 1;
-		fallthrough;
-	case CH_WIDTH_80MHZ:
+	if (params->ch_width == CH_WIDTH_80MHZ)
 		cmd->bw_80 = 1;
-		fallthrough;
-	case CH_WIDTH_40MHZ:
-		cmd->bw_40 = 1;
-		fallthrough;
-	default:
-		break;
-	}
+	else if (params->ch_width == CH_WIDTH_160MHZ)
+		cmd->bw_160 = 1;
+	else if (params->ch_width == CH_WIDTH_80P80MHZ)
+		cmd->bw_160 = 1;
+
+	wma_set_peer_assoc_params_bw_320(cmd, params->ch_width);
 
 	cmd->peer_vht_caps = params->vht_caps;
 	if (params->p2pCapableSta) {
@@ -2577,7 +2544,6 @@ QDF_STATUS wma_set_ap_vdev_up(tp_wma_handle wma, uint8_t vdev_id)
 	}
 	wma_set_sap_keepalive(wma, vdev_id);
 	wma_set_vdev_mgmt_rate(wma, vdev_id);
-	wma_vdev_set_he_bss_params(wma, vdev_id, &mlme_obj->proto.he_ops_info);
 	wma_sr_update(wma, vdev_id, true);
 
 	return status;

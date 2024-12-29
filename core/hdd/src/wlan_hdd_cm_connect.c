@@ -699,7 +699,6 @@ int wlan_hdd_cm_connect(struct wiphy *wiphy,
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(ndev);
 	struct hdd_context *hdd_ctx;
 	struct hdd_station_ctx *hdd_sta_ctx;
-	qdf_freq_t ch_freq = 0;
 
 	hdd_enter();
 
@@ -735,15 +734,6 @@ int wlan_hdd_cm_connect(struct wiphy *wiphy,
 	if (policy_mgr_is_hw_dbs_capable(hdd_ctx->psoc) &&
 	    !wlan_hdd_cm_handle_sap_sta_dfs_conc(hdd_ctx, req)) {
 		hdd_err("sap-sta conc will fail, can't allow sta");
-		return -EINVAL;
-	}
-
-	if (req->channel && req->channel->center_freq)
-		ch_freq = req->channel->center_freq;
-
-	if (ch_freq && wlan_reg_is_6ghz_chan_freq(ch_freq) &&
-	    !wlan_reg_is_6ghz_band_set(hdd_ctx->pdev)) {
-		hdd_err("6 GHz band disabled");
 		return -EINVAL;
 	}
 
@@ -994,6 +984,16 @@ static void hdd_cm_save_bss_info(struct hdd_adapter *adapter,
 	} else {
 		hdd_sta_ctx->conn_info.conn_flag.vht_op_present = false;
 	}
+
+	if (assoc_resp->he_cap.present)
+		hdd_sta_ctx->conn_info.conn_flag.he_present = true;
+	else
+		hdd_sta_ctx->conn_info.conn_flag.he_present = false;
+
+	if (assoc_resp->eht_cap.present)
+		hdd_sta_ctx->conn_info.conn_flag.eht_present = true;
+	else
+		hdd_sta_ctx->conn_info.conn_flag.eht_present = false;
 
 	/*
 	 * Cache connection info only in case of station
@@ -1294,39 +1294,6 @@ struct hdd_adapter *hdd_get_assoc_link_adapter(struct hdd_adapter *ml_adapter)
 
 	return NULL;
 }
-
-static void hdd_set_immediate_power_save(struct hdd_adapter *adapter,
-					 bool is_immediate_powersave)
-{
-	struct hdd_adapter *link_adapter;
-	struct hdd_mlo_adapter_info *mlo_adapter_info;
-	struct hdd_station_ctx *sta_ctx;
-	int i;
-
-	mlo_adapter_info = &adapter->mlo_adapter_info;
-	if (mlo_adapter_info->is_ml_adapter) {
-		for (i = 0; i < WLAN_MAX_MLD; i++) {
-			link_adapter = mlo_adapter_info->link_adapter[i];
-			if (!link_adapter)
-				continue;
-			sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(link_adapter);
-			sta_ctx->ap_supports_immediate_power_save =
-							is_immediate_powersave;
-		}
-	}
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
-	sta_ctx->ap_supports_immediate_power_save = is_immediate_powersave;
-}
-
-#else
-static void hdd_set_immediate_power_save(struct hdd_adapter *adapter,
-					 bool is_immediate_powersave)
-{
-	struct hdd_station_ctx *sta_ctx;
-
-	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
-	sta_ctx->ap_supports_immediate_power_save = is_immediate_powersave;
-}
 #endif
 
 static void
@@ -1348,7 +1315,6 @@ hdd_cm_connect_success_pre_user_update(struct wlan_objmgr_vdev *vdev,
 	uint8_t uapsd_mask = 0;
 	uint32_t time_buffer_size;
 	struct hdd_adapter *assoc_link_adapter;
-	bool is_immediate_power_save;
 
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
@@ -1402,10 +1368,9 @@ hdd_cm_connect_success_pre_user_update(struct wlan_objmgr_vdev *vdev,
 		ie_field  = (uint8_t *)(rsp->connect_ies.bcn_probe_rsp.ptr +
 				sizeof(struct wlan_frame_hdr) +
 				offsetof(struct wlan_bcn_frame, ie));
-		is_immediate_power_save =
+		sta_ctx->ap_supports_immediate_power_save =
 				wlan_hdd_is_ap_supports_immediate_power_save(
-					ie_field, ie_len);
-		hdd_set_immediate_power_save(adapter, is_immediate_power_save);
+				     ie_field, ie_len);
 		hdd_debug("ap_supports_immediate_power_save flag [%d]",
 			  sta_ctx->ap_supports_immediate_power_save);
 	}

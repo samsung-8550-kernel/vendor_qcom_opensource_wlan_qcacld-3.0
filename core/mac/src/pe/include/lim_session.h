@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -206,8 +206,6 @@ struct mld_capab_and_op {
  * @eml_capab_present: the present flag of EML capability
  * @mld_capab_and_op_present: the present flag of MLD capability and operation
  * @mld_id_present: the present flag of MLD ID
- * @ext_mld_capab_and_op_present: Extended MLD Capabilities And
- *                                Operations Present
  * @reserved_1: reserved
  * @common_info_length: common info length
  * @mld_mac_addr: MLD mac address
@@ -232,8 +230,7 @@ struct wlan_mlo_ie {
 	uint16_t eml_capab_present:1;
 	uint16_t mld_capab_and_op_present: 1;
 	uint16_t mld_id_present: 1;
-	uint16_t ext_mld_capab_and_op_present: 1;
-	uint16_t reserved_1:5;
+	uint16_t reserved_1:6;
 	uint8_t common_info_length;
 	uint8_t mld_mac_addr[6];
 	uint8_t link_id;
@@ -323,8 +320,6 @@ struct mlo_link_ie_info {
  * @medium_sync_delay_info_present: Medium sync delay information present
  * @bss_param_change_cnt_present: BSS parameter change count present
  * @link_id_info_present: Link ID information present
- * @ext_mld_capab_and_op_present: Extended MLD Capabilities And
- *                                Operations Present
  * @reserved: reserved bit
  * @type: Type bits
  */
@@ -332,8 +327,7 @@ struct wlan_mlo_ie_info {
 #ifndef ANI_LITTLE_BIT_ENDIAN
 	uint8_t mld_mac_addr[6];
 	uint8_t common_info_length;
-	uint16_t reserved_1:5;
-	uint16_t ext_mld_capab_and_op_present:1;
+	uint16_t reserved_1:6;
 	uint16_t mld_id_present:1;
 	uint16_t mld_capab_and_op_present:1;
 	uint16_t eml_capab_present:1;
@@ -351,8 +345,7 @@ struct wlan_mlo_ie_info {
 	uint16_t eml_capab_present:1;
 	uint16_t mld_capab_and_op_present:1;
 	uint16_t mld_id_present:1;
-	uint16_t ext_mld_capab_and_op_present:1;
-	uint16_t reserved_1:5;
+	uint16_t reserved_1:6;
 	uint8_t common_info_length;
 	uint8_t mld_mac_addr[6];
 #endif
@@ -653,8 +646,10 @@ struct wlan_mlo_ie_info {
  * @prot_status_code:
  * @result_code:
  * @dfs_regdomain:
- * @ap_defined_power_type_6g: 6 GHz power type advertised by AP
- * @best_6g_power_type: best 6 GHz power type
+ * @ap_power_type: AP power type
+ * @same_ctry_code: If AP Country IE has same country code as STA programmed
+ *                  country
+ * @ap_power_type_6g: AP power type for 6G (LPI, SP, or VLP)
  * @sta_follows_sap_power:
  * @eht_capable:
  * @eht_config:
@@ -664,8 +659,6 @@ struct wlan_mlo_ie_info {
  * @mlo_ie_total_len:
  * @mlo_ie:
  * @user_edca_set:
- * @is_oui_auth_assoc_6mbps_2ghz_enable: send auth/assoc req with 6 Mbps rate
- * on 2.4 GHz
  */
 struct pe_session {
 	uint8_t available;
@@ -983,8 +976,9 @@ struct pe_session {
 	uint16_t prot_status_code;
 	tSirResultCodes result_code;
 	uint32_t dfs_regdomain;
-	uint8_t ap_defined_power_type_6g;
-	uint8_t best_6g_power_type;
+	uint8_t ap_power_type;
+	bool same_ctry_code;
+	uint8_t ap_power_type_6g;
 	bool sta_follows_sap_power;
 #ifdef WLAN_FEATURE_11BE
 	bool eht_capable;
@@ -998,7 +992,6 @@ struct pe_session {
 #endif
 #endif /* WLAN_FEATURE_11BE */
 	uint8_t user_edca_set;
-	bool is_oui_auth_assoc_6mbps_2ghz_enable;
 };
 
 /*-------------------------------------------------------------------------

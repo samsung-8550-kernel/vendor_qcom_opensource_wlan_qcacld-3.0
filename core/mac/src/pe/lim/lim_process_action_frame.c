@@ -56,6 +56,7 @@
 #include "son_api.h"
 #include "wlan_t2lm_api.h"
 #include "wlan_mlo_mgr_public_structs.h"
+#include "sir_mac_prot_def.h"
 
 #define SA_QUERY_REQ_MIN_LEN \
 (DOT11F_FF_CATEGORY_LEN + DOT11F_FF_ACTION_LEN + DOT11F_FF_TRANSACTIONID_LEN)
@@ -1626,7 +1627,7 @@ static void lim_process_addba_req(struct mac_context *mac_ctx, uint8_t *rx_pkt_i
 			session,
 			addba_req->addba_extn_element.present,
 			addba_req->addba_param_set.amsdu_supp,
-			mac_hdr->fc.wep, buff_size, mac_hdr->bssId);
+			mac_hdr->fc.wep, buff_size);
 		if (qdf_status != QDF_STATUS_SUCCESS) {
 			pe_err("Failed to send addba response frame");
 			cdp_addba_resp_tx_completion(
@@ -2161,18 +2162,19 @@ void lim_process_action_frame(struct mac_context *mac_ctx,
 	case ACTION_CATEGORY_PROTECTED_EHT:
 		pe_debug("EHT T2LM action category: %d action: %d",
 			 action_hdr->category, action_hdr->actionID);
-		mac_hdr = WMA_GET_RX_MAC_HEADER(rx_pkt_info);
-		body_ptr = WMA_GET_RX_MPDU_DATA(rx_pkt_info);
-		frame_len = WMA_GET_RX_PAYLOAD_LEN(rx_pkt_info);
-		peer = wlan_objmgr_get_peer_by_mac(mac_ctx->psoc,
-						   mac_hdr->sa,
-						   WLAN_LEGACY_MAC_ID);
-		if (!peer) {
-			pe_err("Peer is null");
-			break;
-		}
 		switch (action_hdr->actionID) {
 		case EHT_T2LM_REQUEST:
+			mac_hdr = WMA_GET_RX_MAC_HEADER(rx_pkt_info);
+			body_ptr = WMA_GET_RX_MPDU_DATA(rx_pkt_info);
+			frame_len = WMA_GET_RX_PAYLOAD_LEN(rx_pkt_info);
+
+			peer = wlan_objmgr_get_peer_by_mac(mac_ctx->psoc,
+							   mac_hdr->sa,
+							   WLAN_LEGACY_MAC_ID);
+			if (!peer) {
+				pe_err("Peer is null");
+				break;
+			}
 			if (wlan_t2lm_deliver_event(
 				session->vdev, peer,
 				WLAN_T2LM_EV_ACTION_FRAME_RX_REQ,

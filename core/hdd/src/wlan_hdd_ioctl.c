@@ -55,6 +55,10 @@
 #define SIOCIOCTLTX99 (SIOCDEVPRIVATE+13)
 #endif
 
+#ifdef CONFIG_SEC
+#define SIZE_OF_WIFI6E_CHAN_LIST       512
+#endif /*CONFIG_SEC*/
+
 /*
  * Size of Driver command strings from upper layer
  */
@@ -589,7 +593,7 @@ static int hdd_parse_reassoc_v1(struct hdd_adapter *adapter, const char *command
 	status = ucfg_wlan_cm_roam_invoke(hdd_ctx->pdev,
 					  adapter->vdev_id,
 					  &target_bssid, freq,
-					  CM_ROAMING_HOST);
+					  CM_ROAMING_USER);
 	return qdf_status_to_os_return(status);
 }
 
@@ -644,7 +648,7 @@ static int hdd_parse_reassoc_v2(struct hdd_adapter *adapter,
 		status = ucfg_wlan_cm_roam_invoke(hdd_ctx->pdev,
 						  adapter->vdev_id,
 						  &target_bssid, freq,
-						  CM_ROAMING_HOST);
+						  CM_ROAMING_USER);
 		ret = qdf_status_to_os_return(status);
 	}
 
@@ -2642,11 +2646,113 @@ static int drv_cmd_set_wmmps(struct hdd_adapter *adapter,
 	return hdd_wmmps_helper(adapter, command);
 }
 
-static inline int __drv_cmd_country(struct hdd_adapter *adapter,
-				    struct hdd_context *hdd_ctx,
-				    uint8_t *command,
-				    uint8_t command_len,
-				    struct hdd_priv_data *priv_data)
+#ifdef CONFIG_SEC
+#ifdef CONFIG_BAND_6GHZ
+/**
+ * @drv_cmd_get_wifi6e_channels - Helper function to get 6 GHz channel list
+ * @adapter: pointer to adapter on which request is received
+ * @hdd_ctx: pointer to hdd context
+ * @command: command name
+ * @command_len: command buffer length
+ * @priv_data: output pointer to hold current country code
+ *
+ * Return: On success 0, negative value on error.
+ */
+static int drv_cmd_get_wifi6e_channels(struct hdd_adapter *adapter,
+				       struct hdd_context *hdd_ctx,
+				       uint8_t *command,
+				       uint8_t command_len,
+				       struct hdd_priv_data *priv_data)
+{
+	int i, power_type, power_trpe_ret;
+	char extra[SIZE_OF_WIFI6E_CHAN_LIST] = {0};
+	int copied_length = 0, ret = 0;
+	uint8_t *value = command;
+	enum channel_state state;
+	struct regulatory_channel *chan_list;
+	size_t max_buf_len = QDF_MIN(priv_data->total_len,
+				     SIZE_OF_WIFI6E_CHAN_LIST);
+	QDF_STATUS status;
+
+	hdd_enter();
+
+	if (wlan_hdd_validate_context(hdd_ctx))
+		return -EINVAL;
+
+	value = value + command_len;
+	ret = sscanf(value, "%d", &power_type);
+
+	if (ret != 1)
+		return -EINVAL;
+
+	power_trpe_ret = power_type;
+	if (power_type == 0) {
+		power_type = REG_CLI_DEF_LPI;
+	} else if (power_type == 1) {
+		power_type = REG_CLI_DEF_VLP;
+	} else if (power_type == 2) {
+		power_type = REG_CLI_DEF_SP;
+	} else {
+		hdd_err("The power type : %d, is incorrect", power_type);
+		return -EINVAL;
+	}
+
+	chan_list = qdf_mem_malloc(NUM_CHANNELS * sizeof(*chan_list));
+
+	if (!chan_list) {
+		ret = -ENOMEM;
+		goto free;
+	}
+
+	status = wlan_reg_get_pwrmode_chan_list(hdd_ctx->pdev, chan_list,
+						power_type);
+
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Failed to get wifi6e channel list for given power type %d",
+			power_trpe_ret);
+		ret =  status;
+		goto free;
+	}
+
+	for (i = 0; i < NUM_6GHZ_CHANNELS && copied_length < max_buf_len - 1;
+	     i++) {
+		state = chan_list[i + MIN_6GHZ_CHANNEL].state;
+		if (state == CHANNEL_STATE_INVALID ||
+		    state == CHANNEL_STATE_DISABLE)
+			continue;
+		copied_length += scnprintf(extra + copied_length,
+					   max_buf_len - copied_length, "%d ",
+					   chan_list[i + MIN_6GHZ_CHANNEL].chan_num);
+	}
+
+	if (copied_length == 0) {
+		hdd_err("No Channel List found for given power type %d",
+			power_trpe_ret);
+		ret = -EINVAL;
+		goto free;
+	}
+
+	if (copy_to_user(priv_data->buf, &extra, copied_length + 1)) {
+		hdd_err("failed to copy data to user buffer");
+		ret = -EFAULT;
+		goto free;
+	}
+
+	hdd_debug("Data = %s", extra);
+	ret =  0;
+
+free:
+	qdf_mem_free(chan_list);
+	return ret;
+}
+#endif
+#endif /*CONFIG_SEC*/
+
+static inline int drv_cmd_country(struct hdd_adapter *adapter,
+				  struct hdd_context *hdd_ctx,
+				  uint8_t *command,
+				  uint8_t command_len,
+				  struct hdd_priv_data *priv_data)
 {
 	char *country_code;
 
@@ -2671,26 +2777,6 @@ static inline int __drv_cmd_country(struct hdd_adapter *adapter,
 		return -EINVAL;
 
 	return hdd_reg_set_country(hdd_ctx, country_code);
-}
-
-static inline int drv_cmd_country(struct hdd_adapter *adapter,
-				  struct hdd_context *hdd_ctx,
-				  uint8_t *command,
-				  uint8_t command_len,
-				  struct hdd_priv_data *priv_data)
-{
-	struct osif_psoc_sync *psoc_sync;
-	int errno;
-
-	errno = osif_psoc_sync_op_start(wiphy_dev(hdd_ctx->wiphy), &psoc_sync);
-	if (errno)
-		return errno;
-	errno = __drv_cmd_country(adapter, hdd_ctx, command, command_len,
-				  priv_data);
-
-	osif_psoc_sync_op_stop(psoc_sync);
-
-	return errno;
 }
 
 /**
@@ -4332,6 +4418,30 @@ exit:
 	return ret;
 }
 
+/**
+ * drv_cmd_fast_reassoc() - Handler for FASTREASSOC driver command
+ * @link_info: Carries link specific info, which contains adapter
+ * @hdd_ctx: pointer to hdd context
+ * @command: Buffer that carries actual command data, which can be parsed by
+ *           hdd_parse_reassoc_command_v1_data()
+ * @command_len: Command length
+ * @priv_data: to carry any priv data, FASTREASSOC doesn't have any priv
+ *             data for now.
+ *
+ * This function parses the reasoc command data passed in the format
+ * FASTREASSOC<space><bssid><space><channel/frequency>
+ *
+ * If MAC from user space is broadcast MAC as:
+ * "wpa_cli DRIVER FASTREASSOC ff:ff:ff:ff:ff:ff 0",
+ * user space invoked roaming candidate selection will base on firmware score
+ * algorithm, current connection will be kept if current AP has highest
+ * score. It is requirement from customer which can avoid ping-pong roaming.
+ *
+ * If firmware fails to roam to new AP due to any reason, host to disconnect
+ * from current AP as it's unable to roam.
+ *
+ * Return: 0 for success non-zero for failure
+ */
 static int drv_cmd_fast_reassoc(struct hdd_adapter *adapter,
 				struct hdd_context *hdd_ctx,
 				uint8_t *command,
@@ -6051,6 +6161,7 @@ static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
 	QDF_STATUS status;
 	QDF_STATUS status_6G = QDF_STATUS_SUCCESS;
 	int8_t input_value;
+	bool fcc_constraint;
 	int err;
 	uint32_t band_bitmap = 0;
 	bool rf_test_mode;
@@ -6060,11 +6171,8 @@ static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
 	 * ON after airplane mode is set. When APM is set, WLAN turns off.
 	 * But it can be turned back on. Otherwise; when APM is turned back
 	 * off, WLAN would turn back on. So at that point the command is
-	 * expected to come down.
-	 * a) 0 means reduce power as per fcc constraint and disable 6 GHz band
-	 *    but keep existing STA/P2P Client connections intact.
-	 * b) 1 means reduce power as per fcc constraint and enable 6 GHz band.
-	 * c) -1 means remove constraint and enable 6 GHz band.
+	 * expected to come down. 0 means reduce power as per fcc constraint
+	 * and -1 means remove constraint.
 	 */
 
 	err = kstrtos8(command + command_len + 1, 10, &input_value);
@@ -6073,49 +6181,11 @@ static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
 		return err;
 	}
 
-	hdd_debug("input_value = %d", input_value);
+	fcc_constraint = (input_value == -1) ? false : true;
+	hdd_debug("input_value = %d && fcc_constraint = %u",
+		  input_value, fcc_constraint);
 
-	if (input_value == 0 || input_value == 1) {
-		status = ucfg_reg_set_fcc_constraint(hdd_ctx->pdev, true);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			hdd_err("Failed to reduce tx power for channels 12/13");
-			return qdf_status_to_os_return(status);
-		}
-	} else if (input_value == -1) {
-		status = ucfg_reg_set_fcc_constraint(hdd_ctx->pdev, false);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			hdd_err("Failed to reset tx power for channels 12/13");
-			return qdf_status_to_os_return(status);
-		}
-	} else {
-		return -EINVAL;
-	}
-
-	/*
-	 * For input value 1 or -1, 6 GHz band should be re enabled, so
-	 * keep_6ghz_sta_cli_connection flag can be disabled.
-	 */
-	if (input_value == 1 || input_value == -1) {
-		status = ucfg_reg_set_keep_6ghz_sta_cli_connection(
-							hdd_ctx->pdev, false);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			hdd_err("Failed to enable 6 GHz band");
-			return qdf_status_to_os_return(status);
-		}
-	}
-
-	/*
-	 * For input value 0, 6 GHz band is disabled but existing 6 GHz STA
-	 * P2P client connections should be intact.
-	 * If host receives this SET_FCC_CHANNEL 0 twice return from here to
-	 * avoid completely disabling 6 GHz band.
-	 */
-	if (input_value == 0 &&
-	    ucfg_reg_get_keep_6ghz_sta_cli_connection(hdd_ctx->pdev)) {
-		hdd_debug("FCC constraint is already set");
-		status = QDF_STATUS_SUCCESS;
-		return qdf_status_to_os_return(status);
-	}
+	status = ucfg_reg_set_fcc_constraint(hdd_ctx->pdev, fcc_constraint);
 
 	status_6G = ucfg_mlme_is_rf_test_mode_enabled(hdd_ctx->psoc,
 						      &rf_test_mode);
@@ -6127,12 +6197,6 @@ static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
 	if (!rf_test_mode) {
 		if (!input_value) {
 			band_bitmap |= (BIT(REG_BAND_5G) | BIT(REG_BAND_2G));
-			status = ucfg_reg_set_keep_6ghz_sta_cli_connection(
-							hdd_ctx->pdev, true);
-			if (QDF_IS_STATUS_ERROR(status)) {
-				hdd_err("Failed to disable 6 GHz band");
-				return qdf_status_to_os_return(status);
-			}
 		} else {
 			if (wlan_reg_is_6ghz_supported(hdd_ctx->psoc))
 				band_bitmap = REG_BAND_MASK_ALL;
@@ -6142,7 +6206,12 @@ static int drv_cmd_set_fcc_channel(struct hdd_adapter *adapter,
 	}
 
 send_status:
-	status = status_6G;
+	if (QDF_IS_STATUS_ERROR(status))
+		hdd_err("Failed to %s tx power for channels 12/13",
+			fcc_constraint ? "restore" : "reduce");
+	else
+		status = status_6G;
+
 	return qdf_status_to_os_return(status);
 }
 
@@ -7034,6 +7103,11 @@ static const struct hdd_drv_cmd hdd_drv_cmds[] = {
 	{"RXFILTER-STOP",             drv_cmd_dummy, false},
 	{"BTCOEXSCAN-START",          drv_cmd_dummy, false},
 	{"BTCOEXSCAN-STOP",           drv_cmd_dummy, false},
+#ifdef CONFIG_SEC
+#ifdef CONFIG_BAND_6GHZ
+	{"GET_WIFI6E_CHANNELS",       drv_cmd_get_wifi6e_channels, true},
+#endif
+#endif/*CONFIG_SEC*/
 };
 
 /**
